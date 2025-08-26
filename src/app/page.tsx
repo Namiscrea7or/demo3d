@@ -1,31 +1,15 @@
-// Trong file page.tsx của bạn
-
 "use client";
 
-import { useState } from "react";
-import Sidebar from "../components/sidebar/sidebar";
-import ThreeScene from "../components/threeScene/index";
-import InstructionBar from "../components/instructions/instructsionBar";
+import dynamic from 'next/dynamic';
+
+const Layout3D = dynamic(
+  () => import('../components/layout3D/index'), 
+  { 
+    ssr: false,
+    loading: () => <p className="flex h-screen w-screen items-center justify-center bg-gray-900 text-white">Loading 3D Scene...</p> 
+  }
+);
 
 export default function Page() {
-  const [step, setStep] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-
-  return (
-    <div className="flex min-h-screen">
-      <Sidebar isMuted={isMuted} setIsMuted={setIsMuted} />
-      
-      <div className="flex-1 flex flex-col">
-        <div className="flex-1">
-          <ThreeScene step={step} />
-        </div>
-
-        <InstructionBar 
-          step={step} 
-          setStep={setStep} 
-          isMuted={isMuted} 
-        />
-      </div>
-    </div>
-  );
+  return <Layout3D />;
 }

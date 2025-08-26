@@ -1,124 +1,143 @@
-'use client'
+"use client";
 
-import React, { useState, useEffect } from "react";
-import { useTranslation } from "react-i18next";
-import screenfull from "screenfull";
+import { useState, useEffect } from "react";
+import { EyeIcon, EyeSlashIcon, ChevronRightIcon, ChevronDownIcon } from '@heroicons/react/24/solid';
+import * as THREE from 'three';
+import type { Object3D } from 'three';
 
-const Sidebar: React.FC<{
-  isMuted: boolean;
-  setIsMuted: (muted: boolean) => void;
-}> = ({ isMuted, setIsMuted }) => {
-  const { t, i18n } = useTranslation();
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showLangMenu, setShowLangMenu] = useState(false);
+type SidebarProps = {
+  scene: Object3D | null;
+  visibility: Record<string, boolean>;
+  toggleVisibility: (name: string) => void;
+  resetVisibility: () => void;
+};
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (screenfull.isEnabled) {
-        setIsFullscreen(screenfull.isFullscreen);
-      }
-    };
+const isGroupVisible = (object: Object3D, visibility: Record<string, boolean>): boolean => {
+  if (object instanceof THREE.Mesh) return visibility[object.name] ?? true;
+  for (const child of object.children) {
+    if (isGroupVisible(child, visibility)) return true;
+  }
+  return false;
+};
 
-    if (screenfull.isEnabled) {
-      screenfull.on('change', handleFullscreenChange);
-    }
-
-    return () => {
-      if (screenfull.isEnabled) {
-        screenfull.off('change', handleFullscreenChange);
-      }
-    };
-  }, []);
-
-  const toggleLangMenu = () => setShowLangMenu(prev => !prev);
-
-  const changeLanguage = (lng: string) => {
-    i18n.changeLanguage(lng);
-    setShowLangMenu(false);
-  };
-
-  const toggleFullscreen = () => {
-    if (screenfull.isEnabled) {
-      screenfull.toggle();
-    }
-  };
-
-  const toggleMute = () => {
-    const newMutedState = !isMuted;
-    setIsMuted(newMutedState); 
-    
-    const videos = document.querySelectorAll<HTMLVideoElement>("video");
-    const audios = document.querySelectorAll<HTMLAudioElement>("audio");
-    videos.forEach(v => (v.muted = newMutedState));
-    audios.forEach(a => (a.muted = newMutedState));
-  };
+const SceneNode = ({ object, visibility, toggleVisibility, userExpanded, autoExpandSet, toggleExpansion, level = 0 }: {
+  object: Object3D,
+  visibility: Record<string, boolean>,
+  toggleVisibility: (name: string) => void,
+  userExpanded: Record<string, boolean>,
+  autoExpandSet: Set<string>,
+  toggleExpansion: (uuid: string) => void,
+  level?: number
+}) => {
+  const hasChildren = object.children && object.children.length > 0;
+  const isVisible = isGroupVisible(object, visibility);
+  const isExpanded = userExpanded[object.uuid] ?? autoExpandSet.has(object.uuid);
 
   return (
-    <div className="w-32 flex flex-col items-center py-6 bg-[#F8F5F2]">
-      <div className="flex flex-col items-center space-y-5">
-        <button title={t("menu")} className="p-3 rounded-full hover:bg-gray-200 transition-colors">
-          <svg className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-
-        <div className="w-full flex flex-col items-center">
-          <button
-            onClick={toggleLangMenu}
-            title={t("language")}
-            className="p-3 rounded-full hover:bg-gray-200 transition-colors"
-          >
-            <span className="font-bold text-lg text-gray-700">文A</span>
-          </button>
-
-          {showLangMenu && (
-            <div className="mt-2 w-full max-w-xs px-4">
-              <div className="bg-white rounded-md shadow-lg p-1">
-                <button
-                  onClick={() => changeLanguage("en")}
-                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
-                >
-                  English
-                </button>
-                <button
-                  onClick={() => changeLanguage("fr")}
-                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
-                >
-                  Français
-                </button>
-              </div>
-            </div>
+    <div style={{ paddingLeft: `${level * 16}px` }}>
+      <div className="flex items-center justify-between p-1.5 hover:bg-gray-700 rounded-md group">
+        <div className="flex items-center flex-1 truncate" onClick={() => hasChildren && toggleExpansion(object.uuid)}>
+          {hasChildren ? (
+            <span className="mr-1 text-gray-400">
+              {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
+            </span>
+          ) : (
+            <div className="w-5 mr-1"></div>
           )}
+          <span className="text-sm cursor-pointer">{object.name || 'Unnamed Object'}</span>
         </div>
-
-        {/* --- ICON MUTE/UNMUTE MỚI --- */}
-        <button onClick={toggleMute} title={t("mute")} className="p-3 rounded-full hover:bg-gray-200 transition-colors">
-          {isMuted ? (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707a1 1 0 011.414 0v17.414a1 1 0 01-1.414 0L5.586 15zM19 9l-6 6m0-6l6 6" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707a1 1 0 011.414 0v17.414a1 1 0 01-1.414 0L5.586 15z" />
-            </svg>
-          )}
-        </button>
-
-        {/* --- ICON FULLSCREEN MỚI --- */}
-        <button onClick={toggleFullscreen} title={t("fullscreen")} className="p-3 rounded-full hover:bg-gray-200 transition-colors">
-          {isFullscreen ? (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4m12 4V4h-4M4 16v4h4m12-4v4h-4" />
-            </svg>
-          )}
+        <button onClick={() => toggleVisibility(object.name)} className="text-gray-400 hover:text-white ml-2">
+          {isVisible ? <EyeIcon className="h-5 w-5" /> : <EyeSlashIcon className="h-5 w-5" />}
         </button>
       </div>
+      {isExpanded && hasChildren && (
+        <div>
+          {object.children.map(child => (
+            <SceneNode
+              key={child.uuid}
+              object={child}
+              visibility={visibility}
+              toggleVisibility={toggleVisibility}
+              userExpanded={userExpanded}
+              autoExpandSet={autoExpandSet}
+              toggleExpansion={toggleExpansion}
+              level={level + 1}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
-export default Sidebar;
+const filterScene = (scene: Object3D | null, searchTerm: string): { filteredTree: Object3D[], autoExpandSet: Set<string> } => {
+  if (!scene) return { filteredTree: [], autoExpandSet: new Set() };
+  if (!searchTerm) return { filteredTree: scene.children, autoExpandSet: new Set() };
+
+  const lowerCaseSearch = searchTerm.toLowerCase();
+  const autoExpandSet = new Set<string>();
+
+  function recursiveFilter(nodes: Object3D[]): Object3D[] {
+    return nodes.reduce<Object3D[]>((acc, node) => {
+      const children = recursiveFilter(node.children);
+      const nameMatches = node.name.toLowerCase().includes(lowerCaseSearch);
+
+      if (nameMatches || children.length > 0) {
+        const clonedNode = node.clone(false);
+        clonedNode.children = children;
+        if (children.length > 0 && nameMatches === false) {
+          autoExpandSet.add(clonedNode.uuid);
+        }
+        acc.push(clonedNode);
+      }
+      return acc;
+    }, []);
+  }
+
+  return { filteredTree: recursiveFilter(scene.children), autoExpandSet };
+};
+
+export default function Sidebar({ scene, visibility, toggleVisibility, resetVisibility }: SidebarProps) {
+  const [userExpanded, setUserExpanded] = useState<Record<string, boolean>>({});
+  const [searchTerm, setSearchTerm] = useState("");
+  const [{ filteredTree, autoExpandSet }, setFilteredData] = useState<{ filteredTree: Object3D[], autoExpandSet: Set<string> }>({ filteredTree: [], autoExpandSet: new Set() });
+
+  useEffect(() => {
+    setFilteredData(filterScene(scene, searchTerm));
+  }, [scene, searchTerm]);
+
+  const toggleExpansion = (uuid: string) => {
+    setUserExpanded(prev => ({ ...prev, [uuid]: !prev[uuid] }));
+  };
+
+  return (
+    <div className="w-64 bg-gray-800 border-r border-gray-700 p-4 flex flex-col">
+      <h2 className="text-lg font-semibold mb-4">Scene Tree</h2>
+      <div className="flex items-center space-x-2 mb-3">
+        <input
+          type="text"
+          placeholder="Search..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded-md text-sm text-white"
+        />
+        <button onClick={resetVisibility} className="p-1.5 border border-gray-600 bg-gray-700 rounded-md hover:bg-gray-600" title="Reset Visibility">
+          <EyeIcon className="h-5 w-5 text-gray-300" />
+        </button>
+      </div>
+      <div className="flex-grow overflow-y-auto pr-2">
+        {scene ? filteredTree.map(child => (
+          <SceneNode
+            key={child.uuid}
+            object={child}
+            visibility={visibility}
+            toggleVisibility={toggleVisibility}
+            userExpanded={userExpanded}
+            autoExpandSet={autoExpandSet}
+            toggleExpansion={toggleExpansion}
+          />
+        )) : <p className="text-sm text-gray-500">Loading model...</p>}
+      </div>
+    </div>
+  );
+}

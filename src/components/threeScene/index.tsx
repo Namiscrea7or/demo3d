@@ -1,41 +1,49 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, useGLTF } from "@react-three/drei";
 import { Suspense } from "react";
-import { Step0, Step1, Step2, Step3, Step4 } from "./steps";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, Bounds, Grid } from "@react-three/drei";
+import Model from "./Model";
+import type { Object3D } from 'three';
 
-type Props = { step: number };
+type ThreeSceneProps = {
+  scene: Object3D;
+  step: number;
+  visibility: Record<string, boolean>;
+};
 
-function SceneContent({ step }: Props) {
-  const { scene } = useGLTF("/ABB.glb");
-  switch (step) {
-    case 0:
-      return <Step0 scene={scene} />;
-    case 1:
-      return <Step1 scene={scene} />;
-    case 2:
-      return <Step2 scene={scene} />;
-    case 3:
-      return <Step3 scene={scene} />;
-    case 4:
-      return <Step4 scene={scene} />;
-    default:
-      return <Step0 scene={scene} />;
-  }
-}
-
-export default function ThreeScene({ step }: Props) {
+export default function ThreeScene({ scene, step, visibility }: ThreeSceneProps) {
   return (
-    <div className="w-full h-full bg-white">
-      <Canvas camera={{ position: [0, 2, 6], fov: 50 }}>
-        <ambientLight intensity={1} />
-        <directionalLight position={[5, 5, 5]} intensity={1.2} />
-        <Suspense fallback={null}>
-          <SceneContent step={step} />
-        </Suspense>
-        <OrbitControls />
-      </Canvas>
-    </div>
+    <Canvas
+      shadows
+      camera={{ position: [4, 3, 6], fov: 45 }}
+      style={{ background: "#435167" }}
+    >
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[10, 10, 5]} intensity={1.5} castShadow />
+
+      <Grid
+        args={[100, 100]}
+        cellSize={1}
+        cellThickness={1.5}
+        sectionSize={10}
+        sectionThickness={1}
+        cellColor="#ffffff"
+        sectionColor="#ffffff"
+        fadeDistance={80}
+        fadeStrength={1}
+        infiniteGrid
+      />
+
+      <axesHelper args={[10]} />
+
+      <Suspense fallback={null}>
+        <Bounds fit clip observe margin={1.2}>
+          <Model scene={scene} step={step} visibility={visibility} />
+        </Bounds>
+      </Suspense>
+
+      <OrbitControls makeDefault />
+    </Canvas>
   );
 }
