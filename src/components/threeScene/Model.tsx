@@ -6,47 +6,40 @@ import type { Object3D } from 'three';
 
 type ModelProps = {
   scene: Object3D;
-  step: number;
   visibility: Record<string, boolean>;
+  selectedObjectNode: Object3D | null;
+  onSelectObject: (name: string | null) => void;
 };
 
-const stepHighlightMap: { [key: string]: number } = {
-  "Base": 0,
-  "SupportColumn": 1,
-  "TableTop": 2,
-};
-
-export default function Model({ scene, step, visibility }: ModelProps) {
-  const highlightMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: "#4a90e2",
-    emissive: "#2a508e",
-    metalness: 0.8,
-    roughness: 0.3,
+export default function Model({ scene, visibility, selectedObjectNode, onSelectObject }: ModelProps) {
+  const selectionMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+      color: "#2dd4bf",
+      emissive: "#14b8a6",
   }), []);
-
+  
   useEffect(() => {
     if (!scene) return;
+
+    const selectedMeshes = new Set<string>();
+    if (selectedObjectNode) {
+        selectedObjectNode.traverse((child) => { if (child instanceof THREE.Mesh) selectedMeshes.add(child.name); });
+    }
 
     scene.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.visible = visibility[object.name] ?? true;
+        if (object.userData.originalMaterial === undefined) object.userData.originalMaterial = object.material;
         
-        const highlightStep = stepHighlightMap[object.name];
-        const isHighlighted = highlightStep === step;
-        
-        if (isHighlighted) {
-          if (!object.userData.originalMaterial) {
-            object.userData.originalMaterial = object.material;
-          }
-          object.material = highlightMaterial;
+        const isSelected = selectedMeshes.has(object.name);
+
+        if (isSelected) {
+            object.material = selectionMaterial;
         } else {
-          if (object.userData.originalMaterial) {
             object.material = object.userData.originalMaterial;
-          }
         }
       }
     });
-  }, [visibility, step, scene, highlightMaterial]);
+  }, [visibility, scene, selectedObjectNode, selectionMaterial]);
 
-  return <primitive object={scene} />;
+  return <primitive object={scene} onClick={(e: any) => { e.stopPropagation(); onSelectObject(e.object.name); }} />;
 }
