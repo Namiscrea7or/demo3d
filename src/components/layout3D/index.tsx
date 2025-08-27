@@ -1,153 +1,217 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import Sidebar from "../sidebar/sidebar";
 import ThreeScene from "../threeScene/index";
 import ViewportToolbar from "../viewport/viewPort";
 import InstructionPanel from "../instructions/instructsionBar";
 import * as THREE from 'three';
+import { useSpring, easings } from '@react-spring/three';
 import type { Object3D, Vector3, Euler } from 'three';
 
-type TransformState = { position: Vector3, rotation: Euler, scale: Vector3 };
-type HistoryState = Map<string, TransformState>;
+type TransformState = {
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  scale: THREE.Vector3;
+};
+
+type Step = {
+  name: string;
+  transforms: Record<string, TransformState>;
+  visibility: Record<string, boolean>;
+};
 
 export default function Layout3D() {
-  const [scene, setScene] = useState<Object3D | null>(null);
+  const [activeScene, setActiveScene] = useState<Object3D | null>(null);
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [transformMode, setTransformMode] = useState<'select' | 'translate' | 'rotate' | 'scale'>('translate');
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [steps, setSteps] = useState<string[]>(['Step 1']);
+  const [steps, setSteps] = useState<Step[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
+  const [version, setVersion] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const { scene: loadedScene } = useGLTF("/ABB.glb");
 
-  const takeSnapshot = useCallback((scene: Object3D): HistoryState => {
-    const snapshot: HistoryState = new Map();
-    scene.traverse(obj => {
-      snapshot.set(obj.name, {
-        position: obj.position.clone(),
-        rotation: obj.rotation.clone(),
-        scale: obj.scale.clone(),
-      });
-    });
-    return snapshot;
-  }, []);
+  const [spring, api] = useSpring(() => ({
+    stepIndex: 0,
+  }));
 
-  const applySnapshot = useCallback((scene: Object3D, snapshot: HistoryState) => {
+  const extractTransforms = (scene: Object3D): Record<string, TransformState> => {
+    const transforms: Record<string, TransformState> = {};
     scene.traverse(obj => {
-      const state = snapshot.get(obj.name);
-      if (state) {
-        obj.position.copy(state.position);
-        obj.rotation.copy(state.rotation);
-        obj.scale.copy(state.scale);
+      if (obj.name) {
+        transforms[obj.name] = {
+          position: obj.position.clone(),
+          quaternion: obj.quaternion.clone(),
+          scale: obj.scale.clone(),
+        };
       }
     });
-    setScene(scene.clone());
-  }, []);
+    return transforms;
+  };
 
-  const pushHistory = useCallback((newScene: Object3D) => {
-    const newSnapshot = takeSnapshot(newScene);
-    const newHistory = history.slice(0, historyIndex + 1);
-    setHistory([...newHistory, newSnapshot]);
-    setHistoryIndex(newHistory.length);
-  }, [history, historyIndex, takeSnapshot]);
+  const applyTransforms = (scene: Object3D, transforms: Record<string, TransformState>) => {
+    scene.traverse(obj => {
+      if (obj.name && transforms[obj.name]) {
+        const t = transforms[obj.name];
+        obj.position.copy(t.position);
+        obj.quaternion.copy(t.quaternion);
+        obj.scale.copy(t.scale);
+        obj.updateMatrix();
+      }
+    });
+    setVersion(v => v + 1);
+  };
 
   useEffect(() => {
-    if (loadedScene && history.length === 0) {
+    if (loadedScene && steps.length === 0) {
+      const initialScene = loadedScene.clone();
       const initialVisibility: Record<string, boolean> = {};
-      loadedScene.traverse(object => { if (object instanceof THREE.Mesh) initialVisibility[object.name] = true; });
+      initialScene.traverse(object => { 
+        if (object instanceof THREE.Mesh) initialVisibility[object.name] = true; 
+      });
+      const initialTransforms = extractTransforms(initialScene);
+
       setVisibility(initialVisibility);
-      setScene(loadedScene);
-
-      const initialSnapshot = takeSnapshot(loadedScene);
-      setHistory([initialSnapshot]);
-      setHistoryIndex(0);
+      setSteps([{ name: 'Step 1', transforms: initialTransforms, visibility: initialVisibility }]);
+      setActiveScene(initialScene);
+      setCurrentStep(0);
     }
-  }, [loadedScene, takeSnapshot, history.length]);
+  }, [loadedScene, steps.length]);
 
-  useEffect(() => { useGLTF.preload("/ABB.glb"); }, []);
+  useEffect(() => { 
+    useGLTF.preload("/ABB.glb"); 
+  }, []);
 
-  const handleUndo = () => {
-    if (historyIndex > 0 && scene) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      applySnapshot(scene, history[newIndex]);
-    }
+  const handleStepClick = (index: number) => {
+    if (isAnimating || index < 0 || index >= steps.length || !activeScene) return;
+    setCurrentStep(index);
+    setVisibility(steps[index].visibility);
+    applyTransforms(activeScene, steps[index].transforms);
+    setSelectedObject(null);
   };
 
-  const handleRedo = () => {
-    if (historyIndex < history.length - 1 && scene) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      applySnapshot(scene, history[newIndex]);
-    }
+  const handleAddStep = () => {
+    if (steps.length === 0 || !activeScene) return;
+    const newTransforms = extractTransforms(activeScene);
+    const newVisibility = { ...visibility };
+    const newStep: Step = {
+      name: `Step ${steps.length + 1}`,
+      transforms: newTransforms,
+      visibility: newVisibility,
+    };
+    setSteps(prevSteps => [...prevSteps, newStep]);
+    setCurrentStep(steps.length);
+    setSelectedObject(null);
   };
-
-  const handleSelectObject = (name: string | null) => {
-    if (name === null) {
+  
+  useEffect(() => {
+    if (isAnimating) {
+      handleStepClick(0);
       setSelectedObject(null);
-      return;
+
+      api.start({
+        from: { stepIndex: 0 },
+        to: { stepIndex: steps.length - 1 },
+        config: { duration: (steps.length - 1) * 1500, easing: easings.easeInOutCubic },
+        onRest: () => {
+          setIsAnimating(false);
+          handleStepClick(steps.length - 1);
+        },
+      });
     }
-    setSelectedObject(prev => prev === name ? null : name);
+  }, [isAnimating, steps.length, api]);
+
+  const handleOnPlay = () => {
+    if (steps.length <= 1 || !activeScene || isAnimating) return;
+    setIsAnimating(true);
   };
 
   const updateObjectTransform = (name: string, prop: 'position' | 'rotation' | 'scale', value: Vector3 | Euler, isFinal: boolean) => {
-    if (!scene) return;
-    const object = scene.getObjectByName(name);
+    if (!activeScene) return;
+    const object = activeScene.getObjectByName(name);
     if (object) {
-      object[prop].copy(value as any);
+      if (prop === 'position') object.position.copy(value as Vector3);
+      else if (prop === 'rotation') object.rotation.copy(value as Euler);
+      else if (prop === 'scale') object.scale.copy(value as Vector3);
+      object.updateMatrix();
       if (isFinal) {
-        pushHistory(scene);
-      } else {
-        setScene(scene.clone());
+        const t = { position: object.position.clone(), quaternion: object.quaternion.clone(), scale: object.scale.clone() };
+        setSteps(prev => {
+          const newSteps = [...prev];
+          newSteps[currentStep] = { ...newSteps[currentStep], transforms: { ...newSteps[currentStep].transforms, [name]: t } };
+          return newSteps;
+        });
+        setVersion(v => v + 1);
       }
     }
   };
+
+  const handleTransformChange = () => {
+    if (!selectedObject || !activeScene) return;
+    const obj = activeScene.getObjectByName(selectedObject);
+    if (obj) {
+      const t = { position: obj.position.clone(), quaternion: obj.quaternion.clone(), scale: obj.scale.clone() };
+      setSteps(prev => {
+        const newSteps = [...prev];
+        newSteps[currentStep] = { ...newSteps[currentStep], transforms: { ...newSteps[currentStep].transforms, [selectedObject]: t }};
+        return newSteps;
+      });
+    }
+  };
+
+  const handleTransformFinal = () => {
+    setVersion(v => v + 1);
+  };
+
+  const handleSelectObject = (name: string | null) => {
+    if (!isAnimating) {
+      setSelectedObject(name);
+    }
+  };
+
+  const selectedObjectNode = useMemo(() => {
+    if (!activeScene || !selectedObject) return null;
+    return activeScene.getObjectByName(selectedObject) ?? null;
+  }, [activeScene, selectedObject]);
 
   const handleHideSelected = () => { if (selectedObject) toggleVisibility(selectedObject); };
 
   const toggleVisibility = (name: string) => {
-    if (!scene) return;
-    const object = scene.getObjectByName(name);
-    if (!object) return;
-    const descendantMeshes: THREE.Mesh[] = [];
-    object.traverse((child) => { if (child instanceof THREE.Mesh) descendantMeshes.push(child); });
-    if (descendantMeshes.length === 0 && object instanceof THREE.Mesh) descendantMeshes.push(object);
-    if (descendantMeshes.length === 0) return;
-    const isCurrentlyVisible = visibility[descendantMeshes[0].name] ?? true;
-    const newVisibilityState = !isCurrentlyVisible;
-    const newVisibility = { ...visibility };
-    descendantMeshes.forEach(mesh => { newVisibility[mesh.name] = newVisibilityState; });
-    setVisibility(newVisibility);
+    setVisibility(prev => {
+      const newVis = { ...prev, [name]: !prev[name] };
+      setSteps(prevSteps => {
+        const newSteps = [...prevSteps];
+        newSteps[currentStep] = { ...newSteps[currentStep], visibility: newVis };
+        return newSteps;
+      });
+      setVersion(v => v + 1);
+      return newVis;
+    });
   };
 
   const resetVisibility = () => {
-    const allVisible: Record<string, boolean> = {};
-    Object.keys(visibility).forEach(name => { allVisible[name] = true; });
-    setVisibility(allVisible);
+    if (!activeScene) return;
+    const newVis: Record<string, boolean> = {};
+    activeScene.traverse(obj => { if (obj instanceof THREE.Mesh) newVis[obj.name] = true; });
+    setVisibility(newVis);
+    setSteps(prevSteps => {
+      const newSteps = [...prevSteps];
+      newSteps[currentStep] = { ...newSteps[currentStep], visibility: newVis };
+      return newSteps;
+    });
   };
-
-  const handleStepClick = (index: number) => {
-    setCurrentStep(index);
-  };
-
-  const handleAddStep = () => {
-    setSteps(prev => [...prev, `Step ${prev.length + 1}`]);
-  };
-
-  const handleOnPlay = () => {
-    console.log("2")
-  }
-
-  const selectedObjectNode = useMemo(() => scene && selectedObject ? scene.getObjectByName(selectedObject) || null : null, [scene, selectedObject]);
+  
+  const handleUndo = () => console.log("Undo is disabled in Step mode.");
+  const handleRedo = () => console.log("Redo is disabled in Step mode.");
+  console.log("all the steps: ", steps)
 
   return (
     <div className="flex h-screen bg-gray-900 text-white">
       <Sidebar
-        scene={scene}
+        scene={activeScene}
         visibility={visibility}
         toggleVisibility={toggleVisibility}
         resetVisibility={resetVisibility}
@@ -158,14 +222,19 @@ export default function Layout3D() {
       />
       <div className="flex-1 flex flex-col relative">
         <div className="flex-1 bg-gray-950">
-          {scene && (
+          {activeScene && (
             <ThreeScene
-              scene={scene}
+              scene={activeScene}
               visibility={visibility}
               selectedObjectNode={selectedObjectNode}
               transformMode={transformMode}
-              onUpdateTransform={updateObjectTransform}
+              onTransformChange={handleTransformChange}
+              onTransformFinal={handleTransformFinal}
               onSelectObject={handleSelectObject}
+              isAnimating={isAnimating}
+              version={version}
+              animationSpring={spring}
+              steps={steps}
             />
           )}
         </div>
@@ -175,11 +244,11 @@ export default function Layout3D() {
           onHideSelected={handleHideSelected}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          canUndo={historyIndex > 0}
-          canRedo={historyIndex < history.length - 1}
+          canUndo={false}
+          canRedo={false}
         />
         <InstructionPanel
-          steps={steps}
+          steps={steps.map(s => s.name)}
           currentStep={currentStep}
           onStepClick={handleStepClick}
           onAddStep={handleAddStep}
