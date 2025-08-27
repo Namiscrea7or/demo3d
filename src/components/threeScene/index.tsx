@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import type { Object3D } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
-type Step = {
+type SubStep = {
   transforms: Record<string, any>;
   visibility: Record<string, boolean>;
 };
@@ -17,26 +17,23 @@ type AnimationControllerProps = {
   scene: Object3D;
   isAnimating: boolean;
   animationSpring: any;
-  steps: Step[];
+  animationSubSteps: SubStep[];
 };
 
-function AnimationController({ scene, isAnimating, animationSpring, steps }: AnimationControllerProps) {
+function AnimationController({ scene, isAnimating, animationSpring, animationSubSteps }: AnimationControllerProps) {
   const { invalidate } = useThree();
-
   useFrame(() => {
-    if (!isAnimating || steps.length <= 1) return;
-
-    const currentVal = animationSpring.stepIndex.get();
+    if (!isAnimating || animationSubSteps.length <= 1) return;
+    const currentVal = animationSpring.subStepIndex.get();
     const fromIndex = Math.floor(currentVal);
-    const toIndex = Math.min(Math.ceil(currentVal), steps.length - 1);
+    const toIndex = Math.min(Math.ceil(currentVal), animationSubSteps.length - 1);
     const progress = currentVal - fromIndex;
-
     if (fromIndex === toIndex) return;
 
-    const transformsA = steps[fromIndex].transforms;
-    const transformsB = steps[toIndex].transforms;
-    const visibilityA = steps[fromIndex].visibility;
-    const visibilityB = steps[toIndex].visibility;
+    const transformsA = animationSubSteps[fromIndex].transforms;
+    const transformsB = animationSubSteps[toIndex].transforms;
+    const visibilityA = animationSubSteps[fromIndex].visibility;
+    const visibilityB = animationSubSteps[toIndex].visibility;
 
     scene.traverse(obj => {
       const tA = transformsA[obj.name];
@@ -52,10 +49,8 @@ function AnimationController({ scene, isAnimating, animationSpring, steps }: Ani
         obj.visible = progress < 0.5 ? vA : vB;
       }
     });
-
     invalidate();
   });
-
   return null;
 }
 
@@ -64,13 +59,14 @@ type ThreeSceneProps = {
   visibility: Record<string, boolean>;
   selectedObjectNode: Object3D | null;
   transformMode: 'select' | 'translate' | 'rotate' | 'scale';
+  onTransformStart: () => void;
   onTransformChange: () => void;
   onTransformFinal: () => void;
   onSelectObject: (name: string | null) => void;
   isAnimating: boolean;
   version: number;
   animationSpring: any;
-  steps: Step[];
+  animationSubSteps: SubStep[];
 };
 
 function Invalidator({ version }: { version: number }) {
@@ -81,7 +77,7 @@ function Invalidator({ version }: { version: number }) {
   return null;
 }
 
-export default function ThreeScene({ scene, visibility, selectedObjectNode, transformMode, onTransformChange, onTransformFinal, onSelectObject, isAnimating, version, animationSpring, steps }: ThreeSceneProps) {
+export default function ThreeScene({ scene, visibility, selectedObjectNode, transformMode, onTransformStart, onTransformChange, onTransformFinal, onSelectObject, isAnimating, version, animationSpring, animationSubSteps }: ThreeSceneProps) {
   const orbitControlsRef = useRef<OrbitControlsImpl>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -103,20 +99,21 @@ export default function ThreeScene({ scene, visibility, selectedObjectNode, tran
       <Grid args={[100, 100]} cellSize={1} cellThickness={1.5} sectionSize={10} sectionThickness={1} cellColor="#ffffff" sectionColor="#ffffff" fadeDistance={80} fadeStrength={1} infiniteGrid />
       <axesHelper args={[10]} />
       <Bounds fit clip observe margin={1.2}>
-        <Model 
-            scene={scene} 
-            visibility={visibility} 
-            selectedObjectNode={selectedObjectNode} 
-            onSelectObject={onSelectObject} 
+        <Model
+            scene={scene}
+            visibility={visibility}
+            selectedObjectNode={selectedObjectNode}
+            onSelectObject={onSelectObject}
         />
       </Bounds>
       {!isAnimating && selectedObjectNode && transformMode !== 'select' && (
-        <TransformControls 
-          object={selectedObjectNode} 
+        <TransformControls
+          object={selectedObjectNode}
           mode={transformMode}
           onMouseDown={() => {
             setIsDragging(true);
             if (orbitControlsRef.current) orbitControlsRef.current.enabled = false;
+            onTransformStart();
           }}
           onMouseUp={() => {
             setIsDragging(false);
@@ -127,7 +124,7 @@ export default function ThreeScene({ scene, visibility, selectedObjectNode, tran
         />
       )}
       <OrbitControls ref={orbitControlsRef} makeDefault />
-      <AnimationController scene={scene} isAnimating={isAnimating} animationSpring={animationSpring} steps={steps} />
+      <AnimationController scene={scene} isAnimating={isAnimating} animationSpring={animationSpring} animationSubSteps={animationSubSteps} />
     </Canvas>
   );
 }
