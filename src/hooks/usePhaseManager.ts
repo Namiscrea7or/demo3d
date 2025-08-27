@@ -41,7 +41,7 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     
     const newPhase: Phase = {
       id: uuidv4(),
-      name: `Giai đoạn ${phases.length + 1}`,
+      name: `Phase ${phases.length + 1}`,
       subSteps: [newSubStep],
     };
 

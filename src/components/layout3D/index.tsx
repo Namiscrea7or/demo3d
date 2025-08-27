@@ -66,7 +66,7 @@ export default function Layout3D() {
       
       const firstPhase: Phase = {
         id: uuidv4(),
-        name: "Giai đoạn 1",
+        name: "Phase 1",
         subSteps: [{
           id: uuidv4(),
           transforms: extractTransforms(initialScene),
