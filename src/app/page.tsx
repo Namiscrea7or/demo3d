@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import ThreeScenePureJS, { ThreeSceneAPI } from '../components/threeScene/index';
+import ThreeScene, { ThreeSceneAPI } from '../components/threeScene/index';
 import ConfigPanel from '../components/threeScene/ConfigPanel';
 import { configurations } from '../components/threeScene/Models/configs/index';
 
@@ -46,7 +46,7 @@ const App: React.FC = () => {
       <main style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', flex: 1 }}>
         <div style={{ position: 'relative', background: '#f0f0f0' }}>
           {currentModelData.path && (
-            <ThreeScenePureJS
+            <ThreeScene
               ref={threeSceneApiRef}
               modelPath={currentModelData.path}
               config={currentModelData.config}

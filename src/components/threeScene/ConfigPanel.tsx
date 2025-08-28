@@ -13,14 +13,14 @@ const ConfigPanel: FC<ConfigPanelProps> = ({ config, currentState, onConfigChang
   if (configKeys.length === 0) {
     return (
       <div style={{ padding: '20px', borderLeft: '1px solid #ccc' }}>
-        <p>Không có tùy chỉnh cho model này.</p>
+        <p>No configs for this model.</p>
       </div>
     );
   }
 
   return (
     <div style={{ padding: '20px', borderLeft: '1px solid #ccc', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <h3>Tùy Chỉnh</h3>
+      <h3>Config</h3>
       {configKeys.map((key) => {
         const part = config[key];
         return (

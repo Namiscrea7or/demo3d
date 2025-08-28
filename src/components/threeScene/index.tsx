@@ -2,19 +2,19 @@ import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } f
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { loadModel, disposeModel } from './Models/ModelLoader';
+import { loadModel } from './Models/ModelLoader';
 import { ModelConfiguration } from './Models/configs/types';
 
 export interface ThreeSceneAPI {
   updateMeshColor: (meshName: string, color: string) => void;
 }
 
-interface ThreeScenePureJSProps {
+interface ThreeSceneProps {
   modelPath: string;
   config: ModelConfiguration;
 }
 
-const ThreeScenePureJS = forwardRef<ThreeSceneAPI, ThreeScenePureJSProps>(({ modelPath, config }, ref) => {
+const ThreeScene = forwardRef<ThreeSceneAPI, ThreeSceneProps>(({ modelPath, config }, ref) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -70,6 +70,9 @@ const ThreeScenePureJS = forwardRef<ThreeSceneAPI, ThreeScenePureJSProps>(({ mod
 
         model.traverse((object) => {
           if (object instanceof THREE.Mesh && meshNamesToFind.includes(object.name)) {
+            if (object.material && !Array.isArray(object.material)) {
+                object.material = object.material.clone();
+            }
             customizableMeshesRef.current[object.name] = object;
           }
         });
@@ -96,17 +99,66 @@ const ThreeScenePureJS = forwardRef<ThreeSceneAPI, ThreeScenePureJSProps>(({ mod
     };
     animate();
 
-    const handleResize = () => { /* Logic resize */ };
+    const handleResize = () => {
+      const width = currentMount.clientWidth;
+      const height = currentMount.clientHeight;
+      if (rendererRef.current) {
+        rendererRef.current.setSize(width, height);
+      }
+      if (cameraRef.current) {
+        cameraRef.current.aspect = width / height;
+        cameraRef.current.updateProjectionMatrix();
+      }
+    };
     window.addEventListener('resize', handleResize);
 
-    return () => { /* Logic dọn dẹp */ };
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
+
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
+
+      if (sceneRef.current) {
+        sceneRef.current.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.geometry.dispose();
+            if (Array.isArray(object.material)) {
+              object.material.forEach((material: THREE.Material) => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        });
+      }
+      
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+      }
+      
+      if (currentMount && rendererRef.current?.domElement) {
+        currentMount.removeChild(rendererRef.current.domElement);
+      }
+    };
   }, [modelPath, config]);
 
   return (
     <div ref={mountRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      {isLoading && <div>Loading...</div>}
+      {isLoading && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          backgroundColor: 'rgba(255, 255, 255, 0.8)', zIndex: 10
+        }}>
+          Loading model...
+        </div>
+      )}
     </div>
   );
 });
 
-export default ThreeScenePureJS;
+export default ThreeScene;

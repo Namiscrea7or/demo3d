@@ -2,25 +2,25 @@ import { ModelConfiguration } from './types';
 
 export const modelAConfig: ModelConfiguration = {
   head: {
-    label: 'Màu Đầu',
+    label: 'Body',
     type: 'color',
     meshName: 'Imported1',
     options: [
-      { label: 'Xanh Navy (Mặc định)', value: '#001f3f' },
-      { label: 'Đỏ Ruby', value: '#d11141' },
-      { label: 'Vàng Gold', value: '#ffc425' },
-      { label: 'Xanh Lá Cây', value: '#00a170' },
+      { label: '#001f3f (default)', value: '#001f3f' },
+      { label: '#d11141', value: '#d11141' },
+      { label: '#ffc425', value: '#ffc425' },
+      { label: '#00a170', value: '#00a170' },
     ],
     defaultValue: '#001f3f',
   },
   body: {
-    label: 'Màu Thân',
+    label: 'Head',
     type: 'color',
-    meshName: 'Imported2',
+    meshName: 'Mesh018',
     options: [
-      { label: 'Xám (Mặc định)', value: '#808080' },
-      { label: 'Đen', value: '#000000' },
-      { label: 'Trắng', value: '#ffffff' },
+      { label: '#808080', value: '#808080' },
+      { label: '#000000', value: '#000000' },
+      { label: '#ffffff', value: '#ffffff' },
     ],
     defaultValue: '#808080',
   },
