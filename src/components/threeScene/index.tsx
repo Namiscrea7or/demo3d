@@ -2,27 +2,33 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
-import { Suspense } from "react";
-import { Step0, Step1, Step2, Step3, Step4 } from "./steps";
+import { Suspense, useState, useEffect } from "react";
+import AnimatedModel from "../AnimatedModel"; // Import component mới
 
 type Props = { step: number };
 
+// Component nội dung sẽ tải dữ liệu và truyền xuống
 function SceneContent({ step }: Props) {
-  const { scene } = useGLTF("/ABB.glb");
-  switch (step) {
-    case 0:
-      return <Step0 scene={scene} />;
-    case 1:
-      return <Step1 scene={scene} />;
-    case 2:
-      return <Step2 scene={scene} />;
-    case 3:
-      return <Step3 scene={scene} />;
-    case 4:
-      return <Step4 scene={scene} />;
-    default:
-      return <Step0 scene={scene} />;
+  const { scene } = useGLTF("/ABB.glb"); // Tải model GLB của bạn
+  const [animationData, setAnimationData] = useState(null);
+
+  // Dùng useEffect để tải file JSON một lần
+  useEffect(() => {
+    fetch("/animation_data.json") // Đường dẫn tới file trong thư mục public
+      .then((response) => response.json())
+      .then((data) => {
+        // Lưu mảng animationData vào state
+        setAnimationData(data.animationData);
+      })
+      .catch((error) => console.error("Lỗi khi tải file animation:", error));
+  }, []); // Mảng rỗng đảm bảo chỉ chạy 1 lần
+
+  // Chỉ render khi cả model và data đã được tải
+  if (!animationData) {
+    return null; // Hoặc hiển thị một loading indicator
   }
+
+  return <AnimatedModel scene={scene} animationData={animationData} step={step} />;
 }
 
 export default function ThreeScene({ step }: Props) {
