@@ -1,9 +1,9 @@
-import * as THREE from 'three';
+import type { Vector3, Quaternion } from 'three';
 
 export type TransformState = {
-  position: THREE.Vector3;
-  quaternion: THREE.Quaternion;
-  scale: THREE.Vector3;
+  position: Vector3;
+  quaternion: Quaternion;
+  scale: Vector3;
 };
 
 export type SubStep = {
@@ -20,4 +20,5 @@ export type Phase = {
   id: string;
   name: string;
   subSteps: SubStep[];
+  colorOverrides: Record<string, string>;
 };

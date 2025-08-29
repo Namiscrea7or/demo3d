@@ -4,14 +4,12 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { v4 as uuidv4 } from 'uuid';
 import type { Object3D, Material } from 'three';
 import * as THREE from 'three';
-
 import Sidebar from "../sidebar/sidebar";
 import ThreeScene from "../threeScene/index";
 import ViewportToolbar from "../viewport/viewPort";
 import InstructionPanel from "../instructions/instructsionBar";
 import FileUpload from "../FileUpload";
 import TopBar from "./TopBar";
-
 import usePhaseManager from "@/hooks/usePhaseManager";
 import useAnimationManager from "@/hooks/useAnimationManager";
 import { applyTransforms, extractTransforms } from "@/utils/transformUtils";
@@ -25,13 +23,47 @@ const applyVisibility = (scene: Object3D, visibility: Record<string, boolean>) =
   });
 };
 
+const applyColors = (
+  scene: Object3D,
+  colorOverrides: Record<string, string>,
+  originalMaterials: React.MutableRefObject<Map<string, Material | Material[]>>
+) => {
+  scene.traverse(child => {
+    if (child instanceof THREE.Mesh) {
+      if (originalMaterials.current.has(child.uuid)) {
+        child.material = originalMaterials.current.get(child.uuid)!;
+        originalMaterials.current.delete(child.uuid);
+      }
+
+      const newColorHex = colorOverrides[child.name];
+      if (newColorHex) {
+        if (!originalMaterials.current.has(child.uuid)) {
+          originalMaterials.current.set(child.uuid, child.material);
+        }
+
+        const newColor = new THREE.Color(newColorHex);
+        if (Array.isArray(child.material)) {
+          child.material = child.material.map(m => {
+            const newMat = m.clone();
+            newMat.color.set(newColor);
+            return newMat;
+          });
+        } else {
+          child.material = child.material.clone();
+          child.material.color.set(newColor);
+        }
+      }
+    }
+  });
+};
+
+
 export default function Layout3D() {
   const [activeScene, setActiveScene] = useState<Object3D | null>(null);
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [transformMode, setTransformMode] = useState<'select' | 'translate' | 'rotate' | 'scale'>('translate');
   const [version, setVersion] = useState(0);
 
-  const [colorOverrides, setColorOverrides] = useState<Record<string, THREE.Color>>({});
   const originalMaterials = useRef(new Map<string, Material | Material[]>());
 
   const {
@@ -44,6 +76,7 @@ export default function Layout3D() {
     handleSubStepClick,
     handleAddPhase,
     handleAddSubStep,
+    handleUpdatePhaseColor,
     handleTransformStart,
     handleTransformChange,
     handleTransformFinal,
@@ -56,15 +89,18 @@ export default function Layout3D() {
     canRedo,
   } = usePhaseManager([], activeScene);
 
+  const handleAnimationStepChange = useCallback((subStepIndex: number) => {
+    handleSubStepClick(currentPhaseIndex, subStepIndex);
+  }, [currentPhaseIndex, handleSubStepClick]);
+
   const { isAnimating, spring, handleOnPlay } = useAnimationManager(
     phases,
     currentPhaseIndex,
-    handleSubStepClick
+    handleAnimationStepChange
   );
 
   const handleSceneLoaded = useCallback((loadedScene: Object3D) => {
     setSelectedObject(null);
-    setColorOverrides({});
     originalMaterials.current.clear();
     setTransformMode('translate');
 
@@ -83,22 +119,24 @@ export default function Layout3D() {
         })(),
         transformHistory: { past: [], future: [] },
       }],
+      colorOverrides: {},
     };
     
     setPhases([firstPhase]);
     setActiveScene(initialScene);
   }, [setPhases]);
 
+  const currentPhase = useMemo(() => phases[currentPhaseIndex], [phases, currentPhaseIndex]);
+  const currentSubStep = useMemo(() => currentPhase?.subSteps[currentSubStepIndex], [currentPhase, currentSubStepIndex]);
+
   useEffect(() => {
-    if (activeScene && phases.length > 0) {
-      const currentSubStep = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex];
-      if (currentSubStep) {
-        applyTransforms(activeScene, currentSubStep.transforms);
-        applyVisibility(activeScene, currentSubStep.visibility);
-        setVersion(v => v + 1);
-      }
+    if (activeScene && currentSubStep && currentPhase) {
+      applyTransforms(activeScene, currentSubStep.transforms);
+      applyVisibility(activeScene, currentSubStep.visibility);
+      applyColors(activeScene, currentPhase.colorOverrides, originalMaterials);
+      setVersion(v => v + 1);
     }
-  }, [currentPhaseIndex, currentSubStepIndex, phases, activeScene]);
+  }, [currentSubStep, currentPhase, activeScene]);
   
   const selectedObjectNode = useMemo(() => {
     if (!activeScene || !selectedObject) return null;
@@ -106,45 +144,9 @@ export default function Layout3D() {
   }, [activeScene, selectedObject]);
 
   const handleUpdateColor = useCallback((name: string, newColor: THREE.Color | null) => {
-    const object = activeScene?.getObjectByName(name);
-    if (!object) return;
-
-    setColorOverrides(prev => {
-      const newOverrides = { ...prev };
-      if (newColor) {
-        newOverrides[name] = newColor;
-      } else {
-        delete newOverrides[name];
-      }
-      return newOverrides;
-    });
-
-    object.traverse(child => {
-      if (child instanceof THREE.Mesh) {
-        if (newColor) {
-          if (!originalMaterials.current.has(child.uuid)) {
-            originalMaterials.current.set(child.uuid, child.material);
-          }
-          if (Array.isArray(child.material)) {
-            child.material = child.material.map(m => {
-                const newMat = m.clone();
-                newMat.color.set(newColor);
-                return newMat;
-            });
-          } else {
-            child.material = child.material.clone();
-            child.material.color.set(newColor);
-          }
-        } else {
-          if (originalMaterials.current.has(child.uuid)) {
-            child.material = originalMaterials.current.get(child.uuid)!;
-            originalMaterials.current.delete(child.uuid);
-          }
-        }
-      }
-    });
-    setVersion(v => v + 1);
-  }, [activeScene]);
+    const newColorHex = newColor ? `#${newColor.getHexString()}` : null;
+    handleUpdatePhaseColor(name, newColorHex);
+  }, [handleUpdatePhaseColor]);
 
   const handleHideSelected = () => {
     if (selectedObject) {
@@ -154,7 +156,6 @@ export default function Layout3D() {
 
   const handleExport = useCallback(() => {
     if (phases.length === 0) return;
-
     const dataToExport = {
       animationData: phases.map(phase => ({
         ...phase,
@@ -164,24 +165,40 @@ export default function Layout3D() {
         })
       }))
     };
-    
     const jsonString = JSON.stringify(dataToExport, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
     const a = document.createElement('a');
     a.href = url;
     a.download = 'animation_data.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    
     URL.revokeObjectURL(url);
   }, [phases]);
+
+  // THÊM CÁC HÀM NÀY
+  const handlePrevPhase = useCallback(() => {
+    const newIndex = currentPhaseIndex - 1;
+    if (newIndex >= 0) {
+      handlePhaseClick(newIndex);
+    }
+  }, [currentPhaseIndex, handlePhaseClick]);
+
+  const handleNextPhase = useCallback(() => {
+    const newIndex = currentPhaseIndex + 1;
+    if (newIndex < phases.length) {
+      handlePhaseClick(newIndex);
+    }
+  }, [currentPhaseIndex, phases.length, handlePhaseClick]);
 
   if (!activeScene) {
     return <FileUpload onSceneLoaded={handleSceneLoaded} />;
   }
+
+  const currentPhaseColors = currentPhase?.colorOverrides || {};
+  const selectedObjectColorHex = selectedObject ? currentPhaseColors[selectedObject] : null;
+  const overrideColor = selectedObjectColorHex ? new THREE.Color(selectedObjectColorHex) : null;
 
   return (
     <div className="flex h-screen bg-gray-900 text-white">
@@ -194,7 +211,7 @@ export default function Layout3D() {
         onSelectObject={setSelectedObject}
         selectedObjectNode={selectedObjectNode}
         onUpdateTransform={handleUpdateTransformFromSidebar}
-        overrideColor={selectedObject ? colorOverrides[selectedObject] || null : null}
+        overrideColor={overrideColor}
         onUpdateColor={handleUpdateColor}
       />
       <div className="flex-1 flex flex-col relative">
@@ -237,6 +254,8 @@ export default function Layout3D() {
           onAddPhase={handleAddPhase}
           onAddSubStep={handleAddSubStep}
           onPlay={handleOnPlay}
+          onPrevPhase={handlePrevPhase}
+          onNextPhase={handleNextPhase}
         />
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Object3D, Vector3, Euler } from 'three';
 import type { Phase, SubStep, TransformState } from '@/types';
@@ -12,6 +12,16 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
   const [initialTransformState, setInitialTransformState] = useState<Record<string, TransformState> | null>(null);
 
   const currentVisibility = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex]?.visibility || {};
+
+  const updateCurrentSubStep = useCallback((updater: (subStep: SubStep) => SubStep) => {
+    setPhases(prev => prev.map((phase, pIndex) => {
+      if (pIndex !== currentPhaseIndex) return phase;
+      const newSubSteps = phase.subSteps.map((subStep, sIndex) =>
+        sIndex === currentSubStepIndex ? updater(subStep) : subStep
+      );
+      return { ...phase, subSteps: newSubSteps };
+    }));
+  }, [currentPhaseIndex, currentSubStepIndex]);
 
   const handlePhaseClick = (phaseIndex: number) => {
     if (phaseIndex !== currentPhaseIndex) {
@@ -43,11 +53,12 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
       visibility: newVisibility,
       transformHistory: { past: [], future: [] },
     };
-    
+
     const newPhase: Phase = {
       id: uuidv4(),
       name: `Phase ${phases.length + 1}`,
       subSteps: [newSubStep],
+      colorOverrides: {},
     };
 
     setPhases(prev => [...prev, newPhase]);
@@ -57,9 +68,10 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
 
   const handleAddSubStep = (phaseIndex: number) => {
     if (!activeScene) return;
-    const currentSubStep = phases[phaseIndex]?.subSteps[phases[phaseIndex].subSteps.length - 1];
-    const newTransforms = currentSubStep?.transforms || extractTransforms(activeScene);
-    const newVisibility = currentSubStep?.visibility || {};
+    const currentPhase = phases[phaseIndex];
+    const lastSubStep = currentPhase?.subSteps[currentPhase.subSteps.length - 1];
+    const newTransforms = lastSubStep?.transforms || extractTransforms(activeScene);
+    const newVisibility = lastSubStep?.visibility || {};
 
     const newSubStep: SubStep = {
       id: uuidv4(),
@@ -67,14 +79,28 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
       visibility: newVisibility,
       transformHistory: { past: [], future: [] },
     };
-    
+
     const newSubStepIndex = phases[phaseIndex].subSteps.length;
-    setPhases(prev => prev.map((phase, index) => 
+    setPhases(prev => prev.map((phase, index) =>
       index === phaseIndex
         ? { ...phase, subSteps: [...phase.subSteps, newSubStep] }
         : phase
     ));
     setCurrentSubStepIndex(newSubStepIndex);
+  };
+  
+  const handleUpdatePhaseColor = (name: string, newColorHex: string | null) => {
+      setPhases(prev => prev.map((phase, pIndex) => {
+          if (pIndex !== currentPhaseIndex) return phase;
+
+          const newOverrides = { ...phase.colorOverrides };
+          if (newColorHex) {
+              newOverrides[name] = newColorHex;
+          } else {
+              delete newOverrides[name];
+          }
+          return { ...phase, colorOverrides: newOverrides };
+      }));
   };
 
   const handleTransformStart = () => {
@@ -82,16 +108,6 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     if (currentSubStep) {
       setInitialTransformState(currentSubStep.transforms);
     }
-  };
-
-  const updateCurrentSubStep = (updater: (subStep: SubStep) => SubStep) => {
-    setPhases(prev => prev.map((phase, pIndex) => {
-      if (pIndex !== currentPhaseIndex) return phase;
-      const newSubSteps = phase.subSteps.map((subStep, sIndex) => 
-        sIndex === currentSubStepIndex ? updater(subStep) : subStep
-      );
-      return { ...phase, subSteps: newSubSteps };
-    }));
   };
 
   const handleTransformChange = (selectedObject: string | null, scene: Object3D) => {
@@ -205,6 +221,7 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     handleSubStepClick,
     handleAddPhase,
     handleAddSubStep,
+    handleUpdatePhaseColor,
     handleTransformStart,
     handleTransformChange,
     handleTransformFinal,
