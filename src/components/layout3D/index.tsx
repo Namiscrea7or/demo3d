@@ -34,13 +34,11 @@ const applyColors = (
         child.material = originalMaterials.current.get(child.uuid)!;
         originalMaterials.current.delete(child.uuid);
       }
-
       const newColorHex = colorOverrides[child.name];
       if (newColorHex) {
         if (!originalMaterials.current.has(child.uuid)) {
           originalMaterials.current.set(child.uuid, child.material);
         }
-
         const newColor = new THREE.Color(newColorHex);
         if (Array.isArray(child.material)) {
           child.material = child.material.map(m => {
@@ -56,7 +54,6 @@ const applyColors = (
     }
   });
 };
-
 
 export default function Layout3D() {
   const [activeScene, setActiveScene] = useState<Object3D | null>(null);
@@ -103,7 +100,6 @@ export default function Layout3D() {
     setSelectedObject(null);
     originalMaterials.current.clear();
     setTransformMode('translate');
-
     const initialScene = loadedScene.clone();
     
     const firstPhase: Phase = {
@@ -149,35 +145,62 @@ export default function Layout3D() {
   }, [handleUpdatePhaseColor]);
 
   const handleHideSelected = () => {
-    if (selectedObject) {
-      toggleVisibility(selectedObject);
-    }
+    if (selectedObject) toggleVisibility(selectedObject);
   };
 
   const handleExport = useCallback(() => {
-    if (phases.length === 0) return;
+    if (phases.length === 0) {
+      alert("Không có dữ liệu để export.");
+      return;
+    }
+
+    const serializablePhases = phases.map(phase => {
+      const processedSubSteps = phase.subSteps.map(subStep => {
+        const { transformHistory, ...restOfSubStep } = subStep;
+        const serializableTransforms = Object.entries(restOfSubStep.transforms).reduce((acc, [key, transform]) => {
+          acc[key] = {
+            position: { x: transform.position.x, y: transform.position.y, z: transform.position.z },
+            quaternion: { _x: transform.quaternion.x, _y: transform.quaternion.y, _z: transform.quaternion.z, _w: transform.quaternion.w },
+            scale: { x: transform.scale.x, y: transform.scale.y, z: transform.scale.z },
+          };
+          return acc;
+        }, {} as Record<string, any>);
+        
+        return {
+          ...restOfSubStep,
+          transforms: serializableTransforms,
+        };
+      });
+
+      return {
+        id: phase.id,
+        name: phase.name,
+        colorOverrides: phase.colorOverrides,
+        subSteps: processedSubSteps,
+      };
+    });
+
     const dataToExport = {
-      animationData: phases.map(phase => ({
-        ...phase,
-        subSteps: phase.subSteps.map(subStep => {
-          const { transformHistory, ...rest } = subStep;
-          return rest;
-        })
-      }))
+      animationData: serializablePhases
     };
-    const jsonString = JSON.stringify(dataToExport, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'animation_data.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    
+    try {
+      const jsonString = JSON.stringify(dataToExport, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'animation_data.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error("Lỗi khi chuyển đổi dữ liệu sang JSON:", error);
+        alert("Đã có lỗi xảy ra khi export file. Vui lòng kiểm tra console.");
+    }
   }, [phases]);
 
-  // THÊM CÁC HÀM NÀY
   const handlePrevPhase = useCallback(() => {
     const newIndex = currentPhaseIndex - 1;
     if (newIndex >= 0) {
