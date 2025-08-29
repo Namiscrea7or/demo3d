@@ -14,15 +14,20 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
   const currentVisibility = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex]?.visibility || {};
 
   const handlePhaseClick = (phaseIndex: number) => {
-    const targetPhase = phases[phaseIndex];
-    if (!targetPhase) return;
-    setCurrentPhaseIndex(phaseIndex);
-    setCurrentSubStepIndex(targetPhase.subSteps.length - 1);
+    if (phaseIndex !== currentPhaseIndex) {
+      const targetPhase = phases[phaseIndex];
+      if (!targetPhase) return;
+      setCurrentPhaseIndex(phaseIndex);
+      setCurrentSubStepIndex(0);
+    }
   };
 
-  const handleSubStepClick = (subStepIndex: number) => {
-    const currentPhase = phases[currentPhaseIndex];
-    if (!currentPhase?.subSteps[subStepIndex]) return;
+  const handleSubStepClick = (phaseIndex: number, subStepIndex: number) => {
+    if (phaseIndex !== currentPhaseIndex) {
+      setCurrentPhaseIndex(phaseIndex);
+    }
+    const targetPhase = phases[phaseIndex];
+    if (!targetPhase?.subSteps[subStepIndex]) return;
     setCurrentSubStepIndex(subStepIndex);
   };
 
@@ -50,10 +55,11 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     setCurrentSubStepIndex(0);
   };
 
-  const handleAddSubStep = () => {
+  const handleAddSubStep = (phaseIndex: number) => {
     if (!activeScene) return;
-    const newTransforms = extractTransforms(activeScene);
-    const newVisibility = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex]?.visibility || {};
+    const currentSubStep = phases[phaseIndex]?.subSteps[phases[phaseIndex].subSteps.length - 1];
+    const newTransforms = currentSubStep?.transforms || extractTransforms(activeScene);
+    const newVisibility = currentSubStep?.visibility || {};
 
     const newSubStep: SubStep = {
       id: uuidv4(),
@@ -62,9 +68,9 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
       transformHistory: { past: [], future: [] },
     };
     
-    const newSubStepIndex = phases[currentPhaseIndex].subSteps.length;
+    const newSubStepIndex = phases[phaseIndex].subSteps.length;
     setPhases(prev => prev.map((phase, index) => 
-      index === currentPhaseIndex
+      index === phaseIndex
         ? { ...phase, subSteps: [...phase.subSteps, newSubStep] }
         : phase
     ));
@@ -161,11 +167,11 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
 
     const oldTransforms = currentSubStep.transforms;
     const newTransforms = { ...oldTransforms };
-    const targetTransform = { ...newTransforms[name] };
+    const targetTransform = { ...(newTransforms[name] || { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), scale: new THREE.Vector3(1, 1, 1) }) };
 
-    if (prop === 'position') targetTransform.position.copy(value as Vector3);
-    else if (prop === 'rotation') targetTransform.quaternion.setFromEuler(value as Euler);
-    else if (prop === 'scale') targetTransform.scale.copy(value as Vector3);
+    if (prop === 'position' && value instanceof THREE.Vector3) targetTransform.position.copy(value);
+    else if (prop === 'rotation' && value instanceof THREE.Euler) targetTransform.quaternion.setFromEuler(value);
+    else if (prop === 'scale' && value instanceof THREE.Vector3) targetTransform.scale.copy(value);
 
     newTransforms[name] = targetTransform;
     
