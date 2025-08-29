@@ -150,7 +150,7 @@ export default function Layout3D() {
 
   const handleExport = useCallback(() => {
     if (phases.length === 0) {
-      alert("Không có dữ liệu để export.");
+      alert("No data to export.");
       return;
     }
 
@@ -196,8 +196,8 @@ export default function Layout3D() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-        console.error("Lỗi khi chuyển đổi dữ liệu sang JSON:", error);
-        alert("Đã có lỗi xảy ra khi export file. Vui lòng kiểm tra console.");
+        console.error("Something wrong when transfer to JSON:", error);
+        alert("Error");
     }
   }, [phases]);
 

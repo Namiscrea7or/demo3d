@@ -43,30 +43,23 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     setCurrentSubStepIndex(subStepIndex);
   };
 
-  // ==========================================================
-  // THAY ĐỔI LOGIC Ở HÀM NÀY
-  // ==========================================================
   const handleAddPhase = () => {
-    // Cần có ít nhất một phase để lấy trạng thái mặc định
     if (!activeScene || phases.length === 0) return;
 
-    // Lấy trạng thái mặc định từ step đầu tiên của phase đầu tiên
     const defaultSubStep = phases[0]?.subSteps[0];
 
-    // Kiểm tra đề phòng trường hợp không tìm thấy
     if (!defaultSubStep) {
         console.error("Không thể tìm thấy trạng thái mặc định để tạo phase mới.");
         return;
     }
 
-    // Sao chép transforms và visibility mặc định
     const newTransforms = { ...defaultSubStep.transforms };
     const newVisibility = { ...defaultSubStep.visibility };
 
     const newSubStep: SubStep = {
       id: uuidv4(),
-      transforms: newTransforms, // <-- Sử dụng transform mặc định
-      visibility: newVisibility, // <-- Sử dụng visibility mặc định
+      transforms: newTransforms,
+      visibility: newVisibility,
       transformHistory: { past: [], future: [] },
     };
 
@@ -74,11 +67,10 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
       id: uuidv4(),
       name: `Phase ${phases.length + 1}`,
       subSteps: [newSubStep],
-      colorOverrides: {}, // <-- Phase mới luôn bắt đầu với màu mặc định
+      colorOverrides: {},
     };
 
     setPhases(prev => [...prev, newPhase]);
-    // Tự động chuyển đến phase mới vừa tạo
     setCurrentPhaseIndex(phases.length);
     setCurrentSubStepIndex(0);
   };
