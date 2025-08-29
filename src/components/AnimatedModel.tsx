@@ -1,58 +1,81 @@
 "use client";
 
-import { useLayoutEffect } from 'react';
+import { useRef, useEffect } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Object3D } from 'three';
 
+const ANIMATION_DURATION = 0.5;
+
 type Props = {
   scene: Object3D;
-  animationData: any; // Dữ liệu từ file JSON
-  step: number;
+  animationData: any;
+  phaseIndex: number;
+  subStepIndex: number;
 };
 
-// Component này sẽ áp dụng các transform từ JSON lên model
-export default function AnimatedModel({ scene, animationData, step }: Props) {
-  useLayoutEffect(() => {
-    // Kiểm tra xem dữ liệu đã sẵn sàng chưa
-    if (!scene || !animationData) return;
+export default function AnimatedModel({ scene, animationData, phaseIndex, subStepIndex }: Props) {
+  const previousStateRef = useRef({ phaseIndex, subStepIndex });
+  const animationProgressRef = useRef(1);
 
-    // Giả sử chúng ta chỉ làm việc với phase đầu tiên
-    // và step tương ứng với subStep index
-    const stepData = animationData[0]?.subSteps[step];
+  useEffect(() => {
+    animationProgressRef.current = 0;
 
-    if (!stepData) {
-      console.warn(`Không tìm thấy dữ liệu cho step ${step}`);
+    return () => {
+      previousStateRef.current = { phaseIndex, subStepIndex };
+    };
+  }, [subStepIndex, phaseIndex]);
+
+
+  useFrame((state, delta) => {
+    if (animationProgressRef.current >= 1) {
+      const finalStepData = animationData[phaseIndex]?.subSteps[subStepIndex];
+      if (!finalStepData) return;
+      scene.traverse((child) => {
+        const finalTransform = finalStepData.transforms[child.name];
+        if (finalTransform) {
+          child.position.set(finalTransform.position.x, finalTransform.position.y, finalTransform.position.z);
+          child.quaternion.set(finalTransform.quaternion._x, finalTransform.quaternion._y, finalTransform.quaternion._z, finalTransform.quaternion._w);
+          child.scale.set(finalTransform.scale.x, finalTransform.scale.y, finalTransform.scale.z);
+        }
+      });
       return;
     }
 
-    const { transforms, visibility } = stepData;
+    animationProgressRef.current += delta / ANIMATION_DURATION;
+    const progress = Math.min(animationProgressRef.current, 1);
 
-    // Duyệt qua tất cả các đối tượng trong model
+    const { phaseIndex: prevPhaseIndex, subStepIndex: prevSubStepIndex } = previousStateRef.current;
+    
+    const fromStepData = animationData[prevPhaseIndex]?.subSteps[prevSubStepIndex];
+    const toStepData = animationData[phaseIndex]?.subSteps[subStepIndex];
+
+    if (!fromStepData || !toStepData) return;
+
     scene.traverse((child) => {
-      // Áp dụng transform nếu có định nghĩa trong JSON
-      if (transforms && transforms[child.name]) {
-        const transform = transforms[child.name];
-        
-        // Cập nhật vị trí, xoay, và tỷ lệ
-        if (transform.position) {
-            child.position.set(transform.position.x, transform.position.y, transform.position.z);
-        }
-        if (transform.quaternion) {
-            child.quaternion.set(transform.quaternion._x, transform.quaternion._y, transform.quaternion._z, transform.quaternion._w);
-        }
-        if (transform.scale) {
-            child.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
-        }
-      }
+      const fromTransform = fromStepData.transforms[child.name];
+      const toTransform = toStepData.transforms[child.name];
 
-      // Áp dụng visibility nếu có định nghĩa
-      if (visibility && child instanceof THREE.Mesh) {
-        child.visible = visibility[child.name] ?? true;
+      if (fromTransform && toTransform) {
+        const fromPos = new THREE.Vector3(fromTransform.position.x, fromTransform.position.y, fromTransform.position.z);
+        const toPos = new THREE.Vector3(toTransform.position.x, toTransform.position.y, toTransform.position.z);
+        child.position.lerpVectors(fromPos, toPos, progress);
+
+        const fromQuat = new THREE.Quaternion(fromTransform.quaternion._x, fromTransform.quaternion._y, fromTransform.quaternion._z, fromTransform.quaternion._w);
+        const toQuat = new THREE.Quaternion(toTransform.quaternion._x, toTransform.quaternion._y, toTransform.quaternion._z, toTransform.quaternion._w);
+        child.quaternion.slerpQuaternions(fromQuat, toQuat, progress);
+        
+        const fromScale = new THREE.Vector3(fromTransform.scale.x, fromTransform.scale.y, fromTransform.scale.z);
+        const toScale = new THREE.Vector3(toTransform.scale.x, toTransform.scale.y, toTransform.scale.z);
+        child.scale.lerpVectors(fromScale, toScale, progress);
+      }
+      
+      const toVisibility = toStepData.visibility[child.name] ?? true;
+      if (child.visible !== toVisibility) {
+        child.visible = toVisibility;
       }
     });
+  });
 
-  }, [scene, animationData, step]); // Chạy lại effect khi step thay đổi
-
-  // Trả về model đã được cập nhật
   return <primitive object={scene} />;
 }
