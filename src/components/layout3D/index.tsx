@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useGLTF } from "@react-three/drei";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { v4 as uuidv4 } from 'uuid';
-import type { Object3D } from 'three';
+import type { Object3D, Material } from 'three';
 import * as THREE from 'three';
 
 import Sidebar from "../sidebar/sidebar";
 import ThreeScene from "../threeScene/index";
 import ViewportToolbar from "../viewport/viewPort";
 import InstructionPanel from "../instructions/instructsionBar";
+import FileUpload from "../FileUpload";
+import TopBar from "./TopBar";
 
 import usePhaseManager from "@/hooks/usePhaseManager";
 import useAnimationManager from "@/hooks/useAnimationManager";
@@ -30,7 +31,8 @@ export default function Layout3D() {
   const [transformMode, setTransformMode] = useState<'select' | 'translate' | 'rotate' | 'scale'>('translate');
   const [version, setVersion] = useState(0);
 
-  const { scene: loadedScene } = useGLTF("/ABB.glb");
+  const [colorOverrides, setColorOverrides] = useState<Record<string, THREE.Color>>({});
+  const originalMaterials = useRef(new Map<string, Material | Material[]>());
 
   const {
     phases,
@@ -60,29 +62,32 @@ export default function Layout3D() {
     handleSubStepClick
   );
 
-  useEffect(() => {
-    if (loadedScene && !activeScene) {
-      const initialScene = loadedScene.clone();
-      
-      const firstPhase: Phase = {
+  const handleSceneLoaded = useCallback((loadedScene: Object3D) => {
+    setSelectedObject(null);
+    setColorOverrides({});
+    originalMaterials.current.clear();
+    setTransformMode('translate');
+
+    const initialScene = loadedScene.clone();
+    
+    const firstPhase: Phase = {
+      id: uuidv4(),
+      name: "Phase 1",
+      subSteps: [{
         id: uuidv4(),
-        name: "Phase 1",
-        subSteps: [{
-          id: uuidv4(),
-          transforms: extractTransforms(initialScene),
-          visibility: (() => {
-            const vis: Record<string, boolean> = {};
-            initialScene.traverse(o => { if (o instanceof THREE.Mesh) vis[o.name] = true; });
-            return vis;
-          })(),
-          transformHistory: { past: [], future: [] },
-        }],
-      };
-      
-      setPhases([firstPhase]);
-      setActiveScene(initialScene);
-    }
-  }, [loadedScene, activeScene, setPhases]);
+        transforms: extractTransforms(initialScene),
+        visibility: (() => {
+          const vis: Record<string, boolean> = {};
+          initialScene.traverse(o => { if (o instanceof THREE.Mesh) vis[o.name] = true; });
+          return vis;
+        })(),
+        transformHistory: { past: [], future: [] },
+      }],
+    };
+    
+    setPhases([firstPhase]);
+    setActiveScene(initialScene);
+  }, [setPhases]);
 
   useEffect(() => {
     if (activeScene && phases.length > 0) {
@@ -100,11 +105,83 @@ export default function Layout3D() {
     return activeScene.getObjectByName(selectedObject) ?? null;
   }, [activeScene, selectedObject]);
 
+  const handleUpdateColor = useCallback((name: string, newColor: THREE.Color | null) => {
+    const object = activeScene?.getObjectByName(name);
+    if (!object) return;
+
+    setColorOverrides(prev => {
+      const newOverrides = { ...prev };
+      if (newColor) {
+        newOverrides[name] = newColor;
+      } else {
+        delete newOverrides[name];
+      }
+      return newOverrides;
+    });
+
+    object.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        if (newColor) {
+          if (!originalMaterials.current.has(child.uuid)) {
+            originalMaterials.current.set(child.uuid, child.material);
+          }
+          if (Array.isArray(child.material)) {
+            child.material = child.material.map(m => {
+                const newMat = m.clone();
+                newMat.color.set(newColor);
+                return newMat;
+            });
+          } else {
+            child.material = child.material.clone();
+            child.material.color.set(newColor);
+          }
+        } else {
+          if (originalMaterials.current.has(child.uuid)) {
+            child.material = originalMaterials.current.get(child.uuid)!;
+            originalMaterials.current.delete(child.uuid);
+          }
+        }
+      }
+    });
+    setVersion(v => v + 1);
+  }, [activeScene]);
+
   const handleHideSelected = () => {
     if (selectedObject) {
       toggleVisibility(selectedObject);
     }
   };
+
+  const handleExport = useCallback(() => {
+    if (phases.length === 0) return;
+
+    const dataToExport = {
+      animationData: phases.map(phase => ({
+        ...phase,
+        subSteps: phase.subSteps.map(subStep => {
+          const { transformHistory, ...rest } = subStep;
+          return rest;
+        })
+      }))
+    };
+    
+    const jsonString = JSON.stringify(dataToExport, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'animation_data.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    URL.revokeObjectURL(url);
+  }, [phases]);
+
+  if (!activeScene) {
+    return <FileUpload onSceneLoaded={handleSceneLoaded} />;
+  }
 
   return (
     <div className="flex h-screen bg-gray-900 text-white">
@@ -117,25 +194,26 @@ export default function Layout3D() {
         onSelectObject={setSelectedObject}
         selectedObjectNode={selectedObjectNode}
         onUpdateTransform={handleUpdateTransformFromSidebar}
+        overrideColor={selectedObject ? colorOverrides[selectedObject] || null : null}
+        onUpdateColor={handleUpdateColor}
       />
       <div className="flex-1 flex flex-col relative">
+        <TopBar onExport={handleExport} />
         <div className="flex-1 bg-gray-950">
-          {activeScene && (
-            <ThreeScene
-              scene={activeScene}
-              visibility={currentVisibility}
-              selectedObjectNode={selectedObjectNode}
-              transformMode={transformMode}
-              onTransformStart={handleTransformStart}
-              onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)}
-              onTransformFinal={handleTransformFinal}
-              onSelectObject={setSelectedObject}
-              isAnimating={isAnimating}
-              version={version}
-              animationSubSteps={phases[currentPhaseIndex]?.subSteps || []}
-              animationSpring={spring}
-            />
-          )}
+          <ThreeScene
+            scene={activeScene}
+            visibility={currentVisibility}
+            selectedObjectNode={selectedObjectNode}
+            transformMode={transformMode}
+            onTransformStart={handleTransformStart}
+            onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)}
+            onTransformFinal={handleTransformFinal}
+            onSelectObject={setSelectedObject}
+            isAnimating={isAnimating}
+            version={version}
+            animationSubSteps={phases[currentPhaseIndex]?.subSteps || []}
+            animationSpring={spring}
+          />
         </div>
         <ViewportToolbar
           transformMode={transformMode}

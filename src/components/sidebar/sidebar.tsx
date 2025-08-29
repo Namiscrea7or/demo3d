@@ -14,6 +14,8 @@ type SidebarProps = {
   onSelectObject: (name: string) => void;
   selectedObjectNode: Object3D | null;
   onUpdateTransform: (name: string, prop: 'position' | 'rotation' | 'scale', value: Vector3 | Euler, isFinal: boolean) => void;
+  overrideColor: THREE.Color | null;
+  onUpdateColor: (name: string, newColor: THREE.Color | null) => void;
 };
 
 export default function Sidebar(props: SidebarProps) {
@@ -29,7 +31,9 @@ export default function Sidebar(props: SidebarProps) {
       />
       <PropertiesPanel
         selectedObject={props.selectedObjectNode}
-        onUpdate={(name, prop, val) => props.onUpdateTransform(name, prop, val, true)}
+        overrideColor={props.overrideColor}
+        onUpdateTransform={(name, prop, val) => props.onUpdateTransform(name, prop, val, true)}
+        onUpdateColor={props.onUpdateColor}
       />
     </div>
   );

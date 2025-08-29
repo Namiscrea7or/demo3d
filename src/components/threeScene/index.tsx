@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Bounds, Grid, TransformControls } from "@react-three/drei";
+import { EffectComposer, Outline } from "@react-three/postprocessing";
 import Model from "./Model";
 import * as THREE from 'three';
 import type { Object3D } from 'three';
@@ -29,12 +30,10 @@ function AnimationController({ scene, isAnimating, animationSpring, animationSub
     const toIndex = Math.min(Math.ceil(currentVal), animationSubSteps.length - 1);
     const progress = currentVal - fromIndex;
     if (fromIndex === toIndex) return;
-
     const transformsA = animationSubSteps[fromIndex].transforms;
     const transformsB = animationSubSteps[toIndex].transforms;
     const visibilityA = animationSubSteps[fromIndex].visibility;
     const visibilityB = animationSubSteps[toIndex].visibility;
-
     scene.traverse(obj => {
       const tA = transformsA[obj.name];
       const tB = transformsB[obj.name];
@@ -81,6 +80,17 @@ export default function ThreeScene({ scene, visibility, selectedObjectNode, tran
   const orbitControlsRef = useRef<OrbitControlsImpl>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  const selectedMeshes = useMemo(() => {
+    if (!selectedObjectNode) return [];
+    const meshes: THREE.Mesh[] = [];
+    selectedObjectNode.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        meshes.push(child);
+      }
+    });
+    return meshes;
+  }, [selectedObjectNode]);
+
   return (
     <Canvas
       shadows
@@ -102,7 +112,6 @@ export default function ThreeScene({ scene, visibility, selectedObjectNode, tran
         <Model
             scene={scene}
             visibility={visibility}
-            selectedObjectNode={selectedObjectNode}
             onSelectObject={onSelectObject}
         />
       </Bounds>
@@ -125,6 +134,18 @@ export default function ThreeScene({ scene, visibility, selectedObjectNode, tran
       )}
       <OrbitControls ref={orbitControlsRef} makeDefault />
       <AnimationController scene={scene} isAnimating={isAnimating} animationSpring={animationSpring} animationSubSteps={animationSubSteps} />
+
+      {selectedMeshes.length > 0 && (
+        <EffectComposer multisampling={8} autoClear={false}>
+            <Outline
+                selection={selectedMeshes}
+                visibleEdgeColor={0x14b8a6}
+                hiddenEdgeColor={0x14b8a6}
+                edgeStrength={10}
+                blur
+            />
+        </EffectComposer>
+      )}
     </Canvas>
   );
 }
