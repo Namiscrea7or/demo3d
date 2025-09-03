@@ -9,7 +9,35 @@ import * as THREE from 'three';
 import { arrayMove } from '@dnd-kit/sortable';
 
 const captureThumbnail = (gl: THREE.WebGLRenderer): string => {
-  return gl.domElement.toDataURL('image/png');
+  try {
+    const mainCanvas = gl.domElement;
+    
+    // 1. Đặt kích thước cho thumbnail
+    const thumbnailWidth = 200;
+    const thumbnailHeight = (mainCanvas.height / mainCanvas.width) * thumbnailWidth;
+
+    // 2. Tạo một canvas tạm thời, không hiển thị trên màn hình
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = thumbnailWidth;
+    tempCanvas.height = thumbnailHeight;
+
+    const ctx = tempCanvas.getContext('2d');
+    if (!ctx) {
+      // Nếu không lấy được context, quay lại cách làm cũ
+      return mainCanvas.toDataURL('image/jpeg', 0.7);
+    }
+    
+    // 3. Vẽ nội dung của canvas chính vào canvas tạm thời với kích thước nhỏ hơn
+    ctx.drawImage(mainCanvas, 0, 0, thumbnailWidth, thumbnailHeight);
+
+    // 4. Xuất ảnh từ canvas tạm thời với định dạng JPEG và chất lượng nén
+    // Chất lượng từ 0.0 (thấp nhất) đến 1.0 (cao nhất). 0.7 là một sự cân bằng tốt.
+    return tempCanvas.toDataURL('image/jpeg', 0.7);
+
+  } catch (error) {
+    console.error("Lỗi khi tạo thumbnail tối ưu, quay lại phương pháp mặc định:", error);
+    return gl.domElement.toDataURL('image/png');
+  }
 };
 
 export default function usePhaseManager(

@@ -6,7 +6,7 @@ import { OrbitControls, Bounds, Grid, TransformControls } from "@react-three/dre
 import { EffectComposer, Outline } from "@react-three/postprocessing";
 import Model from "./Model";
 import * as THREE from 'three';
-import type { Object3D } from 'three';
+import type { Object3D, Scene } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 type SubStep = {
@@ -63,6 +63,7 @@ type ThreeSceneProps = {
   onTransformFinal: () => void;
   onSelectObject: (name: string | null) => void;
   onRendererReady?: (renderer: THREE.WebGLRenderer) => void;
+  onSceneReady?: (scene: Scene) => void;
   isAnimating: boolean;
   version: number;
   animationSpring: any;
@@ -77,13 +78,18 @@ function Invalidator({ version }: { version: number }) {
   return null;
 }
 
-function RendererEffect({ onRendererReady }: { onRendererReady?: (renderer: THREE.WebGLRenderer) => void }) {
-  const { gl } = useThree();
+function SceneConnector({ 
+    onRendererReady, 
+    onSceneReady 
+}: { 
+    onRendererReady?: (renderer: THREE.WebGLRenderer) => void, 
+    onSceneReady?: (scene: Scene) => void 
+}) {
+  const { gl, scene } = useThree();
   useEffect(() => {
-    if (onRendererReady) {
-      onRendererReady(gl);
-    }
-  }, [gl, onRendererReady]);
+    if (onRendererReady) onRendererReady(gl);
+    if (onSceneReady) onSceneReady(scene);
+  }, [gl, scene, onRendererReady, onSceneReady]);
   return null;
 }
 
@@ -97,6 +103,7 @@ export default function ThreeScene({
   onTransformFinal,
   onSelectObject,
   onRendererReady,
+  onSceneReady,
   isAnimating,
   version,
   animationSpring,
@@ -129,10 +136,10 @@ export default function ThreeScene({
     >
       <color attach="background" args={['#435167']} />
       <Invalidator version={version} />
-      <RendererEffect onRendererReady={onRendererReady} />
+      <SceneConnector onRendererReady={onRendererReady} onSceneReady={onSceneReady} />
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1.5} castShadow />
-      <Grid args={[100, 100]} cellSize={1} cellThickness={1.5} sectionSize={10} sectionThickness={1} cellColor="#ffffff" sectionColor="#ffffff" fadeDistance={80} fadeStrength={1} infiniteGrid />
+      <Grid args={[100, 100]} cellSize={1} cellThickness={1.5} sectionSize={10} sectionThickness={1} cellColor="#888888" sectionColor="#888888" fadeDistance={80} fadeStrength={1} infiniteGrid />
       <axesHelper args={[10]} />
       <Bounds fit clip observe margin={1.2}>
         <Model
@@ -160,7 +167,6 @@ export default function ThreeScene({
       )}
       <OrbitControls ref={orbitControlsRef} makeDefault />
       <AnimationController scene={scene} isAnimating={isAnimating} animationSpring={animationSpring} animationSubSteps={animationSubSteps} />
-
       <EffectComposer multisampling={8} autoClear={false}>
         <Outline
             selection={selectedMeshes}

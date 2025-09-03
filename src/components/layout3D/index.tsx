@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { v4 as uuidv4 } from 'uuid';
 import type { Object3D, Material } from 'three';
 import * as THREE from 'three';
+
 import Sidebar from "../sidebar/sidebar";
 import ThreeScene from "../threeScene/index";
 import ViewportToolbar from "../viewport/viewPort";
@@ -13,6 +14,7 @@ import TopBar from "./TopBar";
 import usePhaseManager from "@/hooks/usePhaseManager";
 import useAnimationManager from "@/hooks/useAnimationManager";
 import { applyTransforms, extractTransforms } from "@/utils/transformUtils";
+import { exportAndCompressAnimation } from "@/utils/exportUtils"; 
 import type { Phase } from '@/types';
 
 const applyVisibility = (scene: Object3D, visibility: Record<string, boolean>) => {
@@ -137,35 +139,7 @@ export default function Layout3D() {
   const handleHideSelected = () => { if (selectedObject) toggleVisibility(selectedObject); };
 
   const handleExport = useCallback(() => {
-    if (phases.length === 0) { alert("Không có dữ liệu để export."); return; }
-    const serializablePhases = phases.map(phase => {
-      const processedSubSteps = phase.subSteps.map(subStep => {
-        const { transformHistory, thumbnail, ...restOfSubStep } = subStep;
-        const serializableTransforms = Object.entries(restOfSubStep.transforms).reduce((acc, [key, transform]) => {
-          acc[key] = {
-            position: { x: transform.position.x, y: transform.position.y, z: transform.position.z },
-            quaternion: { _x: transform.quaternion.x, _y: transform.quaternion.y, _z: transform.quaternion.z, _w: transform.quaternion.w },
-            scale: { x: transform.scale.x, y: transform.scale.y, z: transform.scale.z },
-          };
-          return acc;
-        }, {} as Record<string, any>);
-        return { ...restOfSubStep, transforms: serializableTransforms };
-      });
-      return { id: phase.id, name: phase.name, colorOverrides: phase.colorOverrides, subSteps: processedSubSteps };
-    });
-    const dataToExport = { animationData: serializablePhases };
-    try {
-      const jsonString = JSON.stringify(dataToExport, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'animation_data.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) { console.error("Lỗi khi chuyển đổi dữ liệu sang JSON:", error); alert("Đã có lỗi xảy ra khi export file. Vui lòng kiểm tra console."); }
+    exportAndCompressAnimation(phases);
   }, [phases]);
 
   const handlePrevPhase = useCallback(() => {
