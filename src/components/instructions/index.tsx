@@ -13,8 +13,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import { PhaseColumn } from "./PhaseColumn";
 import { StepPanel } from "./StepPanel";
-
-type Phase = { id: string; name: string; subSteps: { id: string }[] };
+import type { Phase } from '@/types';
 
 type InstructionPanelProps = {
   phases: Phase[];
@@ -71,7 +70,7 @@ export default function InstructionPanel(props: InstructionPanelProps) {
       if (oldIndex !== -1 && newIndex !== -1) {
         onReorderPhases(oldIndex, newIndex);
       }
-    } else if (activeType === "step" && overType === "step") {
+    } else if (activeType === "step" && overType === "step" && activePhase) {
       const oldIndex = activePhase.subSteps.findIndex((s) => s.id === active.id);
       const newIndex = activePhase.subSteps.findIndex((s) => s.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
@@ -86,30 +85,29 @@ export default function InstructionPanel(props: InstructionPanelProps) {
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
     >
-      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-full max-w-5xl">
-<div className="bg-slate-800/80 backdrop-blur-lg border border-slate-700/50 
-     p-4 rounded-xl shadow-2xl flex space-x-4 h-[35vh] overflow-y-hidden">
-  <PhaseColumn
-    phases={phases}
-    currentPhaseIndex={currentPhaseIndex}
-    onPhaseClick={onPhaseClick}
-    onAddPhase={onAddPhase}
-    onDeletePhase={onDeletePhase}
-  />
-  <StepPanel
-    activePhase={activePhase}
-    currentPhaseIndex={currentPhaseIndex}
-    currentSubStepIndex={currentSubStepIndex}
-    isLastPhase={currentPhaseIndex >= phases.length - 1}
-    onPlay={onPlay}
-    onPrevPhase={onPrevPhase}
-    onNextPhase={onNextPhase}
-    onSubStepClick={onSubStepClick}
-    onAddSubStep={onAddSubStep}
-    onDeleteStep={onDeleteStep}
-  />
-</div>
-
+      <div className="w-full max-w-5xl mx-auto">
+        <div className="bg-slate-800/80 backdrop-blur-lg border border-slate-700/50 
+             p-4 rounded-xl shadow-2xl flex space-x-4 w-full h-[30vh] overflow-y-hidden">
+          <PhaseColumn
+            phases={phases}
+            currentPhaseIndex={currentPhaseIndex}
+            onPhaseClick={onPhaseClick}
+            onAddPhase={onAddPhase}
+            onDeletePhase={onDeletePhase}
+          />
+          <StepPanel
+            activePhase={activePhase}
+            currentPhaseIndex={currentPhaseIndex}
+            currentSubStepIndex={currentSubStepIndex}
+            isLastPhase={currentPhaseIndex >= phases.length - 1}
+            onPlay={onPlay}
+            onPrevPhase={onPrevPhase}
+            onNextPhase={onNextPhase}
+            onSubStepClick={onSubStepClick}
+            onAddSubStep={onAddSubStep}
+            onDeleteStep={onDeleteStep}
+          />
+        </div>
       </div>
     </DndContext>
   );

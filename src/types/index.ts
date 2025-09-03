@@ -8,6 +8,7 @@ export type TransformState = {
 
 export type SubStep = {
   id: string;
+  thumbnail?: string;
   transforms: Record<string, TransformState>;
   visibility: Record<string, boolean>;
   transformHistory: {

@@ -49,6 +49,7 @@ export default function Layout3D() {
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [transformMode, setTransformMode] = useState<'select' | 'translate' | 'rotate' | 'scale'>('translate');
   const [version, setVersion] = useState(0);
+  const [renderer, setRenderer] = useState<THREE.WebGLRenderer | undefined>(undefined);
 
   const originalMaterials = useRef(new Map<string, Material | Material[]>());
 
@@ -59,7 +60,7 @@ export default function Layout3D() {
     handleUpdatePhaseColor, handleTransformStart, handleTransformChange, handleTransformFinal,
     handleUndo, handleRedo, toggleVisibility, resetVisibility, handleUpdateTransformFromSidebar,
     canUndo, canRedo,
-  } = usePhaseManager([], activeScene);
+  } = usePhaseManager([], activeScene, renderer);
 
   const handleAnimationStepChange = useCallback((subStepIndex: number) => {
     handleSubStepClick(currentPhaseIndex, subStepIndex);
@@ -82,6 +83,7 @@ export default function Layout3D() {
       name: "Phase 1",
       subSteps: [{
         id: uuidv4(),
+        thumbnail: undefined,
         transforms: extractTransforms(initialScene),
         visibility: (() => { const vis: Record<string, boolean> = {}; initialScene.traverse(o => { if (o instanceof THREE.Mesh) vis[o.name] = true; }); return vis; })(),
         transformHistory: { past: [], future: [] },
@@ -95,6 +97,23 @@ export default function Layout3D() {
 
   const currentPhase = useMemo(() => phases[currentPhaseIndex], [phases, currentPhaseIndex]);
   const currentSubStep = useMemo(() => currentPhase?.subSteps[currentSubStepIndex], [currentPhase, currentSubStepIndex]);
+
+  useEffect(() => {
+    if (activeScene && renderer && phases.length === 1 && phases[0].subSteps.length === 1 && !phases[0].subSteps[0].thumbnail) {
+      const initialThumbnail = renderer.domElement.toDataURL('image/png');
+      setPhases(prevPhases => {
+        const newPhases = [...prevPhases];
+        newPhases[0] = {
+          ...newPhases[0],
+          subSteps: [{
+            ...newPhases[0].subSteps[0],
+            thumbnail: initialThumbnail,
+          }],
+        };
+        return newPhases;
+      });
+    }
+  }, [activeScene, renderer, phases, setPhases]);
 
   useEffect(() => {
     if (activeScene && currentSubStep && currentPhase) {
@@ -121,7 +140,7 @@ export default function Layout3D() {
     if (phases.length === 0) { alert("Không có dữ liệu để export."); return; }
     const serializablePhases = phases.map(phase => {
       const processedSubSteps = phase.subSteps.map(subStep => {
-        const { transformHistory, ...restOfSubStep } = subStep;
+        const { transformHistory, thumbnail, ...restOfSubStep } = subStep;
         const serializableTransforms = Object.entries(restOfSubStep.transforms).reduce((acc, [key, transform]) => {
           acc[key] = {
             position: { x: transform.position.x, y: transform.position.y, z: transform.position.z },
@@ -168,28 +187,33 @@ export default function Layout3D() {
   return (
     <div className="flex h-screen bg-gray-900 text-white">
       <Sidebar scene={activeScene} visibility={currentVisibility} toggleVisibility={toggleVisibility} resetVisibility={resetVisibility} selectedObject={selectedObject} onSelectObject={setSelectedObject} selectedObjectNode={selectedObjectNode} onUpdateTransform={handleUpdateTransformFromSidebar} overrideColor={overrideColor} onUpdateColor={handleUpdateColor} />
-      <div className="flex-1 flex flex-col relative">
+      
+      <div className="flex-1 flex flex-col min-h-0">
         <TopBar onExport={handleExport} />
-        <div className="flex-1 bg-gray-950">
-          <ThreeScene scene={activeScene} visibility={currentVisibility} selectedObjectNode={selectedObjectNode} transformMode={transformMode} onTransformStart={handleTransformStart} onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)} onTransformFinal={handleTransformFinal} onSelectObject={setSelectedObject} isAnimating={isAnimating} version={version} animationSubSteps={phases[currentPhaseIndex]?.subSteps || []} animationSpring={spring} />
+
+        <div className="flex-1 relative min-h-0">
+          <ThreeScene scene={activeScene} visibility={currentVisibility} selectedObjectNode={selectedObjectNode} transformMode={transformMode} onTransformStart={handleTransformStart} onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)} onTransformFinal={handleTransformFinal} onSelectObject={setSelectedObject} isAnimating={isAnimating} version={version} animationSubSteps={phases[currentPhaseIndex]?.subSteps || []} animationSpring={spring} onRendererReady={setRenderer} />
+          <ViewportToolbar transformMode={transformMode} onSetTransformMode={setTransformMode} onHideSelected={handleHideSelected} onUndo={handleUndo} onRedo={handleRedo} canUndo={canUndo} canRedo={canRedo} />
         </div>
-        <ViewportToolbar transformMode={transformMode} onSetTransformMode={setTransformMode} onHideSelected={handleHideSelected} onUndo={handleUndo} onRedo={handleRedo} canUndo={canUndo} canRedo={canRedo} />
-        <InstructionPanel
-          phases={phases}
-          currentPhaseIndex={currentPhaseIndex}
-          currentSubStepIndex={currentSubStepIndex}
-          onPhaseClick={handlePhaseClick}
-          onSubStepClick={handleSubStepClick}
-          onAddPhase={handleAddPhase}
-          onAddSubStep={handleAddSubStep}
-          onPlay={handleOnPlay}
-          onPrevPhase={handlePrevPhase}
-          onNextPhase={handleNextPhase}
-          onDeletePhase={handleDeletePhase}
-          onDeleteStep={handleDeleteStep}
-          onReorderPhases={handleReorderPhases}
-          onReorderSteps={handleReorderSteps}
-        />
+        
+        <div className="bg-slate-800 p-4 border-t border-slate-700">
+          <InstructionPanel
+            phases={phases}
+            currentPhaseIndex={currentPhaseIndex}
+            currentSubStepIndex={currentSubStepIndex}
+            onPhaseClick={handlePhaseClick}
+            onSubStepClick={handleSubStepClick}
+            onAddPhase={handleAddPhase}
+            onAddSubStep={handleAddSubStep}
+            onPlay={handleOnPlay}
+            onPrevPhase={handlePrevPhase}
+            onNextPhase={handleNextPhase}
+            onDeletePhase={handleDeletePhase}
+            onDeleteStep={handleDeleteStep}
+            onReorderPhases={handleReorderPhases}
+            onReorderSteps={handleReorderSteps}
+          />
+        </div>
       </div>
     </div>
   );

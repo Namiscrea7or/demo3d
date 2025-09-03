@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Play, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { SortableStepItem } from "./SortableStepItem";
 
 type StepPanelProps = {
-  activePhase: { id: string; name: string; subSteps: { id: string }[] } | undefined;
+  activePhase:
+    | { id: string; name: string; subSteps: { id: string; thumbnail?: string }[] }
+    | undefined;
   currentPhaseIndex: number;
   currentSubStepIndex: number;
   isLastPhase: boolean;
@@ -39,7 +44,12 @@ export function StepPanel(props: StepPanelProps) {
     const el = scrollRef.current.querySelector<HTMLElement>(
       `[data-step-index="${currentSubStepIndex}"]`
     );
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    if (el)
+      el.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
   }, [currentSubStepIndex, activePhase?.id]);
 
   return (
@@ -93,8 +103,11 @@ export function StepPanel(props: StepPanelProps) {
                         <SortableStepItem
                           id={subStep.id}
                           stepIndex={subStepIndex}
+                          thumbnail={subStep.thumbnail}
                           isSelected={subStepIndex === currentSubStepIndex}
-                          onClick={() => onSubStepClick(currentPhaseIndex, subStepIndex)}
+                          onClick={() =>
+                            onSubStepClick(currentPhaseIndex, subStepIndex)
+                          }
                           onDelete={(e) => {
                             e.stopPropagation();
                             onDeleteStep(currentPhaseIndex, subStepIndex);

@@ -8,7 +8,15 @@ import { extractTransforms } from '@/utils/transformUtils';
 import * as THREE from 'three';
 import { arrayMove } from '@dnd-kit/sortable';
 
-export default function usePhaseManager(initialPhases: Phase[], activeScene: Object3D | null) {
+const captureThumbnail = (gl: THREE.WebGLRenderer): string => {
+  return gl.domElement.toDataURL('image/png');
+};
+
+export default function usePhaseManager(
+  initialPhases: Phase[],
+  activeScene: Object3D | null,
+  gl: THREE.WebGLRenderer | undefined
+) {
   const [phases, setPhases] = useState<Phase[]>(initialPhases);
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
   const [currentSubStepIndex, setCurrentSubStepIndex] = useState(0);
@@ -33,7 +41,7 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
   };
 
   const handleAddPhase = () => {
-    if (!activeScene || phases.length === 0) return;
+    if (!activeScene || phases.length === 0 || !gl) return;
     const defaultSubStep = phases[0]?.subSteps[0];
     if (!defaultSubStep) {
       console.error("Cannot find default state to create a new phase.");
@@ -41,9 +49,11 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     }
     const newTransforms = { ...defaultSubStep.transforms };
     const newVisibility = { ...defaultSubStep.visibility };
+    const newThumbnail = captureThumbnail(gl);
 
     const newSubStep: SubStep = {
       id: uuidv4(),
+      thumbnail: newThumbnail,
       transforms: newTransforms,
       visibility: newVisibility,
       transformHistory: { past: [], future: [] },
@@ -62,14 +72,16 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
   };
 
   const handleAddSubStep = (phaseIndex: number) => {
-    if (!activeScene) return;
+    if (!activeScene || !gl) return;
     const currentPhase = phases[phaseIndex];
     const lastSubStep = currentPhase?.subSteps[currentPhase.subSteps.length - 1];
     const newTransforms = lastSubStep?.transforms || extractTransforms(activeScene);
     const newVisibility = lastSubStep?.visibility || {};
+    const newThumbnail = captureThumbnail(gl);
 
     const newSubStep: SubStep = {
       id: uuidv4(),
+      thumbnail: newThumbnail,
       transforms: newTransforms,
       visibility: newVisibility,
       transformHistory: { past: [], future: [] },
@@ -195,9 +207,11 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
   };
 
   const handleTransformFinal = () => {
-    if (initialTransformState) {
+    if (initialTransformState && gl) {
+      const newThumbnail = captureThumbnail(gl);
       updateCurrentSubStep(subStep => ({
         ...subStep,
+        thumbnail: newThumbnail,
         transformHistory: {
           past: [...subStep.transformHistory.past, initialTransformState],
           future: [],
@@ -264,9 +278,11 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     newTransforms[name] = targetTransform;
 
     if (isFinal) {
+      const newThumbnail = gl ? captureThumbnail(gl) : undefined;
       updateCurrentSubStep(subStep => ({
         ...subStep,
         transforms: newTransforms,
+        thumbnail: newThumbnail ?? subStep.thumbnail,
         transformHistory: {
           past: [...subStep.transformHistory.past, oldTransforms],
           future: [],

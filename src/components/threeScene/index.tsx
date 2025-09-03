@@ -62,6 +62,7 @@ type ThreeSceneProps = {
   onTransformChange: () => void;
   onTransformFinal: () => void;
   onSelectObject: (name: string | null) => void;
+  onRendererReady?: (renderer: THREE.WebGLRenderer) => void;
   isAnimating: boolean;
   version: number;
   animationSpring: any;
@@ -76,7 +77,31 @@ function Invalidator({ version }: { version: number }) {
   return null;
 }
 
-export default function ThreeScene({ scene, visibility, selectedObjectNode, transformMode, onTransformStart, onTransformChange, onTransformFinal, onSelectObject, isAnimating, version, animationSpring, animationSubSteps }: ThreeSceneProps) {
+function RendererEffect({ onRendererReady }: { onRendererReady?: (renderer: THREE.WebGLRenderer) => void }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    if (onRendererReady) {
+      onRendererReady(gl);
+    }
+  }, [gl, onRendererReady]);
+  return null;
+}
+
+export default function ThreeScene({
+  scene,
+  visibility,
+  selectedObjectNode,
+  transformMode,
+  onTransformStart,
+  onTransformChange,
+  onTransformFinal,
+  onSelectObject,
+  onRendererReady,
+  isAnimating,
+  version,
+  animationSpring,
+  animationSubSteps
+}: ThreeSceneProps) {
   const orbitControlsRef = useRef<OrbitControlsImpl>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -93,17 +118,18 @@ export default function ThreeScene({ scene, visibility, selectedObjectNode, tran
 
   return (
     <Canvas
+      gl={{ preserveDrawingBuffer: true }}
       shadows
-      frameloop={isAnimating ? "always" : "demand"}
       camera={{ position: [4, 3, 6], fov: 45 }}
-      style={{ background: "#435167" }}
       onPointerMissed={() => {
         if (!isDragging && !isAnimating) {
           onSelectObject(null);
         }
       }}
     >
+      <color attach="background" args={['#435167']} />
       <Invalidator version={version} />
+      <RendererEffect onRendererReady={onRendererReady} />
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1.5} castShadow />
       <Grid args={[100, 100]} cellSize={1} cellThickness={1.5} sectionSize={10} sectionThickness={1} cellColor="#ffffff" sectionColor="#ffffff" fadeDistance={80} fadeStrength={1} infiniteGrid />
@@ -135,17 +161,15 @@ export default function ThreeScene({ scene, visibility, selectedObjectNode, tran
       <OrbitControls ref={orbitControlsRef} makeDefault />
       <AnimationController scene={scene} isAnimating={isAnimating} animationSpring={animationSpring} animationSubSteps={animationSubSteps} />
 
-      {selectedMeshes.length > 0 && (
-        <EffectComposer multisampling={8} autoClear={false}>
-            <Outline
-                selection={selectedMeshes}
-                visibleEdgeColor={0x14b8a6}
-                hiddenEdgeColor={0x14b8a6}
-                edgeStrength={10}
-                blur
-            />
-        </EffectComposer>
-      )}
+      <EffectComposer multisampling={8} autoClear={false}>
+        <Outline
+            selection={selectedMeshes}
+            visibleEdgeColor={0x14b8a6}
+            hiddenEdgeColor={0x14b8a6}
+            edgeStrength={10}
+            blur
+        />
+      </EffectComposer>
     </Canvas>
   );
 }
