@@ -6,6 +6,7 @@ import type { Object3D, Vector3, Euler } from 'three';
 import type { Phase, SubStep, TransformState } from '@/types';
 import { extractTransforms } from '@/utils/transformUtils';
 import * as THREE from 'three';
+import { arrayMove } from '@dnd-kit/sortable';
 
 export default function usePhaseManager(initialPhases: Phase[], activeScene: Object3D | null) {
   const [phases, setPhases] = useState<Phase[]>(initialPhases);
@@ -15,20 +16,9 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
 
   const currentVisibility = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex]?.visibility || {};
 
-  const updateCurrentSubStep = useCallback((updater: (subStep: SubStep) => SubStep) => {
-    setPhases(prev => prev.map((phase, pIndex) => {
-      if (pIndex !== currentPhaseIndex) return phase;
-      const newSubSteps = phase.subSteps.map((subStep, sIndex) =>
-        sIndex === currentSubStepIndex ? updater(subStep) : subStep
-      );
-      return { ...phase, subSteps: newSubSteps };
-    }));
-  }, [currentPhaseIndex, currentSubStepIndex]);
-
   const handlePhaseClick = (phaseIndex: number) => {
     if (phaseIndex !== currentPhaseIndex) {
-      const targetPhase = phases[phaseIndex];
-      if (!targetPhase) return;
+      if (!phases[phaseIndex]) return;
       setCurrentPhaseIndex(phaseIndex);
       setCurrentSubStepIndex(0);
     }
@@ -38,21 +28,17 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     if (phaseIndex !== currentPhaseIndex) {
       setCurrentPhaseIndex(phaseIndex);
     }
-    const targetPhase = phases[phaseIndex];
-    if (!targetPhase?.subSteps[subStepIndex]) return;
+    if (!phases[phaseIndex]?.subSteps[subStepIndex]) return;
     setCurrentSubStepIndex(subStepIndex);
   };
 
   const handleAddPhase = () => {
     if (!activeScene || phases.length === 0) return;
-
     const defaultSubStep = phases[0]?.subSteps[0];
-
     if (!defaultSubStep) {
-        console.error("Không thể tìm thấy trạng thái mặc định để tạo phase mới.");
-        return;
+      console.error("Cannot find default state to create a new phase.");
+      return;
     }
-
     const newTransforms = { ...defaultSubStep.transforms };
     const newVisibility = { ...defaultSubStep.visibility };
 
@@ -97,18 +83,96 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     ));
     setCurrentSubStepIndex(newSubStepIndex);
   };
-  
+
+  const handleDeletePhase = (phaseIndexToDelete: number) => {
+    if (phaseIndexToDelete === 0) {
+      alert("You need a least one animation!!!")
+      return;
+    }
+    const phaseNameToDelete = phases[phaseIndexToDelete]?.name || 'this phase';
+    if (!window.confirm(`Are you sure you want to delete "${phaseNameToDelete}"?`)) {
+      return;
+    }
+
+    setPhases(prev => {
+      const newPhases = prev.filter((_, index) => index !== phaseIndexToDelete);
+      if (currentPhaseIndex >= phaseIndexToDelete) {
+        setCurrentPhaseIndex(Math.max(0, currentPhaseIndex - 1));
+      }
+      return newPhases;
+    });
+  };
+
+  const handleDeleteStep = (phaseIndex: number, subStepIndexToDelete: number) => {
+    if (phases[phaseIndex]?.subSteps.length <= 1) {
+      alert("Cannot delete the last step in a phase.");
+      return;
+    }
+
+    setPhases(prev => prev.map((phase, pIndex) => {
+      if (pIndex !== phaseIndex) return phase;
+
+      const newSubSteps = phase.subSteps.filter((_, sIndex) => sIndex !== subStepIndexToDelete);
+      if (currentPhaseIndex === phaseIndex && currentSubStepIndex >= subStepIndexToDelete) {
+        setCurrentSubStepIndex(Math.max(0, currentSubStepIndex - 1));
+      }
+      return { ...phase, subSteps: newSubSteps };
+    }));
+  };
+
+  const handleReorderPhases = (oldIndex: number, newIndex: number) => {
+    setPhases(prev => {
+      const newPhases = arrayMove(prev, oldIndex, newIndex);
+      if (currentPhaseIndex === oldIndex) {
+        setCurrentPhaseIndex(newIndex);
+      } else if (oldIndex < currentPhaseIndex && newIndex >= currentPhaseIndex) {
+        setCurrentPhaseIndex(currentPhaseIndex - 1);
+      } else if (oldIndex > currentPhaseIndex && newIndex <= currentPhaseIndex) {
+        setCurrentPhaseIndex(currentPhaseIndex + 1);
+      }
+      return newPhases;
+    });
+  };
+
+  const handleReorderSteps = (phaseIndex: number, oldIndex: number, newIndex: number) => {
+    setPhases(prev => prev.map((phase, pIndex) => {
+      if (pIndex !== phaseIndex) return phase;
+
+      const newSubSteps = arrayMove(phase.subSteps, oldIndex, newIndex);
+      if (currentPhaseIndex === phaseIndex) {
+        if (currentSubStepIndex === oldIndex) {
+          setCurrentSubStepIndex(newIndex);
+        } else if (oldIndex < currentSubStepIndex && newIndex >= currentSubStepIndex) {
+          setCurrentSubStepIndex(currentSubStepIndex - 1);
+        } else if (oldIndex > currentSubStepIndex && newIndex <= currentSubStepIndex) {
+          setCurrentSubStepIndex(currentSubStepIndex + 1);
+        }
+      }
+      return { ...phase, subSteps: newSubSteps };
+    }));
+  };
+
+  const updateCurrentSubStep = useCallback((updater: (subStep: SubStep) => SubStep) => {
+    setPhases(prev => prev.map((phase, pIndex) => {
+      if (pIndex !== currentPhaseIndex) return phase;
+      const newSubSteps = phase.subSteps.map((subStep, sIndex) =>
+        sIndex === currentSubStepIndex ? updater(subStep) : subStep
+      );
+      return { ...phase, subSteps: newSubSteps };
+    }));
+  }, [currentPhaseIndex, currentSubStepIndex]);
+
   const handleUpdatePhaseColor = (name: string, newColorHex: string | null) => {
-      setPhases(prev => prev.map((phase, pIndex) => {
-          if (pIndex !== currentPhaseIndex) return phase;
-          const newOverrides = { ...phase.colorOverrides };
-          if (newColorHex) {
-              newOverrides[name] = newColorHex;
-          } else {
-              delete newOverrides[name];
-          }
-          return { ...phase, colorOverrides: newOverrides };
-      }));
+    setPhases(prev => prev.map((phase, pIndex) => {
+      if (pIndex !== currentPhaseIndex) return phase;
+      const newOverrides = { ...phase.colorOverrides };
+      if (newColorHex) {
+        newOverrides[name] = newColorHex;
+      } else {
+        delete newOverrides[name];
+      }
+      return { ...phase, colorOverrides: newOverrides };
+    }));
   };
 
   const handleTransformStart = () => {
@@ -147,7 +211,7 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     const subStep = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex];
     if (!subStep || subStep.transformHistory.past.length === 0) return;
     const previousTransforms = subStep.transformHistory.past.slice(-1)[0];
-    
+
     updateCurrentSubStep(ss => ({
       ...ss,
       transforms: previousTransforms,
@@ -184,7 +248,7 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     activeScene.traverse(obj => { if (obj instanceof THREE.Mesh) newVis[obj.name] = true; });
     updateCurrentSubStep(subStep => ({ ...subStep, visibility: newVis }));
   };
-  
+
   const handleUpdateTransformFromSidebar = (name: string, prop: 'position' | 'rotation' | 'scale', value: Vector3 | Euler, isFinal: boolean) => {
     const currentSubStep = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex];
     if (!currentSubStep) return;
@@ -198,7 +262,7 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     else if (prop === 'scale' && value instanceof THREE.Vector3) targetTransform.scale.copy(value);
 
     newTransforms[name] = targetTransform;
-    
+
     if (isFinal) {
       updateCurrentSubStep(subStep => ({
         ...subStep,
@@ -229,6 +293,10 @@ export default function usePhaseManager(initialPhases: Phase[], activeScene: Obj
     handleSubStepClick,
     handleAddPhase,
     handleAddSubStep,
+    handleDeletePhase,
+    handleDeleteStep,
+    handleReorderPhases,
+    handleReorderSteps,
     handleUpdatePhaseColor,
     handleTransformStart,
     handleTransformChange,

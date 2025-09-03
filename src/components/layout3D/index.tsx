@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import Sidebar from "../sidebar/sidebar";
 import ThreeScene from "../threeScene/index";
 import ViewportToolbar from "../viewport/viewPort";
-import InstructionPanel from "../instructions/instructsionBar";
+import InstructionPanel from "../instructions/index";
 import FileUpload from "../FileUpload";
 import TopBar from "./TopBar";
 import usePhaseManager from "@/hooks/usePhaseManager";
@@ -16,11 +16,7 @@ import { applyTransforms, extractTransforms } from "@/utils/transformUtils";
 import type { Phase } from '@/types';
 
 const applyVisibility = (scene: Object3D, visibility: Record<string, boolean>) => {
-  scene.traverse(obj => {
-    if (obj instanceof THREE.Mesh) {
-      obj.visible = visibility[obj.name] ?? true;
-    }
-  });
+  scene.traverse(obj => { if (obj instanceof THREE.Mesh) obj.visible = visibility[obj.name] ?? true; });
 };
 
 const applyColors = (
@@ -36,19 +32,12 @@ const applyColors = (
       }
       const newColorHex = colorOverrides[child.name];
       if (newColorHex) {
-        if (!originalMaterials.current.has(child.uuid)) {
-          originalMaterials.current.set(child.uuid, child.material);
-        }
+        if (!originalMaterials.current.has(child.uuid)) originalMaterials.current.set(child.uuid, child.material);
         const newColor = new THREE.Color(newColorHex);
         if (Array.isArray(child.material)) {
-          child.material = child.material.map(m => {
-            const newMat = m.clone();
-            newMat.color.set(newColor);
-            return newMat;
-          });
+          child.material = child.material.map(m => { const newMat = m.clone(); newMat.color.set(newColor); return newMat; });
         } else {
-          child.material = child.material.clone();
-          child.material.color.set(newColor);
+          child.material = child.material.clone(); (child.material as any).color.set(newColor);
         }
       }
     }
@@ -64,26 +53,12 @@ export default function Layout3D() {
   const originalMaterials = useRef(new Map<string, Material | Material[]>());
 
   const {
-    phases,
-    setPhases,
-    currentPhaseIndex,
-    currentSubStepIndex,
-    currentVisibility,
-    handlePhaseClick,
-    handleSubStepClick,
-    handleAddPhase,
-    handleAddSubStep,
-    handleUpdatePhaseColor,
-    handleTransformStart,
-    handleTransformChange,
-    handleTransformFinal,
-    handleUndo,
-    handleRedo,
-    toggleVisibility,
-    resetVisibility,
-    handleUpdateTransformFromSidebar,
-    canUndo,
-    canRedo,
+    phases, setPhases, currentPhaseIndex, currentSubStepIndex, currentVisibility,
+    handlePhaseClick, handleSubStepClick, handleAddPhase, handleAddSubStep,
+    handleDeletePhase, handleDeleteStep, handleReorderPhases, handleReorderSteps,
+    handleUpdatePhaseColor, handleTransformStart, handleTransformChange, handleTransformFinal,
+    handleUndo, handleRedo, toggleVisibility, resetVisibility, handleUpdateTransformFromSidebar,
+    canUndo, canRedo,
   } = usePhaseManager([], activeScene);
 
   const handleAnimationStepChange = useCallback((subStepIndex: number) => {
@@ -108,11 +83,7 @@ export default function Layout3D() {
       subSteps: [{
         id: uuidv4(),
         transforms: extractTransforms(initialScene),
-        visibility: (() => {
-          const vis: Record<string, boolean> = {};
-          initialScene.traverse(o => { if (o instanceof THREE.Mesh) vis[o.name] = true; });
-          return vis;
-        })(),
+        visibility: (() => { const vis: Record<string, boolean> = {}; initialScene.traverse(o => { if (o instanceof THREE.Mesh) vis[o.name] = true; }); return vis; })(),
         transformHistory: { past: [], future: [] },
       }],
       colorOverrides: {},
@@ -144,16 +115,10 @@ export default function Layout3D() {
     handleUpdatePhaseColor(name, newColorHex);
   }, [handleUpdatePhaseColor]);
 
-  const handleHideSelected = () => {
-    if (selectedObject) toggleVisibility(selectedObject);
-  };
+  const handleHideSelected = () => { if (selectedObject) toggleVisibility(selectedObject); };
 
   const handleExport = useCallback(() => {
-    if (phases.length === 0) {
-      alert("No data to export.");
-      return;
-    }
-
+    if (phases.length === 0) { alert("Không có dữ liệu để export."); return; }
     const serializablePhases = phases.map(phase => {
       const processedSubSteps = phase.subSteps.map(subStep => {
         const { transformHistory, ...restOfSubStep } = subStep;
@@ -165,25 +130,11 @@ export default function Layout3D() {
           };
           return acc;
         }, {} as Record<string, any>);
-        
-        return {
-          ...restOfSubStep,
-          transforms: serializableTransforms,
-        };
+        return { ...restOfSubStep, transforms: serializableTransforms };
       });
-
-      return {
-        id: phase.id,
-        name: phase.name,
-        colorOverrides: phase.colorOverrides,
-        subSteps: processedSubSteps,
-      };
+      return { id: phase.id, name: phase.name, colorOverrides: phase.colorOverrides, subSteps: processedSubSteps };
     });
-
-    const dataToExport = {
-      animationData: serializablePhases
-    };
-    
+    const dataToExport = { animationData: serializablePhases };
     try {
       const jsonString = JSON.stringify(dataToExport, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
@@ -195,29 +146,20 @@ export default function Layout3D() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (error) {
-        console.error("Something wrong when transfer to JSON:", error);
-        alert("Error");
-    }
+    } catch (error) { console.error("Lỗi khi chuyển đổi dữ liệu sang JSON:", error); alert("Đã có lỗi xảy ra khi export file. Vui lòng kiểm tra console."); }
   }, [phases]);
 
   const handlePrevPhase = useCallback(() => {
     const newIndex = currentPhaseIndex - 1;
-    if (newIndex >= 0) {
-      handlePhaseClick(newIndex);
-    }
+    if (newIndex >= 0) handlePhaseClick(newIndex);
   }, [currentPhaseIndex, handlePhaseClick]);
 
   const handleNextPhase = useCallback(() => {
     const newIndex = currentPhaseIndex + 1;
-    if (newIndex < phases.length) {
-      handlePhaseClick(newIndex);
-    }
+    if (newIndex < phases.length) handlePhaseClick(newIndex);
   }, [currentPhaseIndex, phases.length, handlePhaseClick]);
 
-  if (!activeScene) {
-    return <FileUpload onSceneLoaded={handleSceneLoaded} />;
-  }
+  if (!activeScene) return <FileUpload onSceneLoaded={handleSceneLoaded} />;
 
   const currentPhaseColors = currentPhase?.colorOverrides || {};
   const selectedObjectColorHex = selectedObject ? currentPhaseColors[selectedObject] : null;
@@ -225,51 +167,15 @@ export default function Layout3D() {
 
   return (
     <div className="flex h-screen bg-gray-900 text-white">
-      <Sidebar
-        scene={activeScene}
-        visibility={currentVisibility}
-        toggleVisibility={toggleVisibility}
-        resetVisibility={resetVisibility}
-        selectedObject={selectedObject}
-        onSelectObject={setSelectedObject}
-        selectedObjectNode={selectedObjectNode}
-        onUpdateTransform={handleUpdateTransformFromSidebar}
-        overrideColor={overrideColor}
-        onUpdateColor={handleUpdateColor}
-      />
+      <Sidebar scene={activeScene} visibility={currentVisibility} toggleVisibility={toggleVisibility} resetVisibility={resetVisibility} selectedObject={selectedObject} onSelectObject={setSelectedObject} selectedObjectNode={selectedObjectNode} onUpdateTransform={handleUpdateTransformFromSidebar} overrideColor={overrideColor} onUpdateColor={handleUpdateColor} />
       <div className="flex-1 flex flex-col relative">
         <TopBar onExport={handleExport} />
         <div className="flex-1 bg-gray-950">
-          <ThreeScene
-            scene={activeScene}
-            visibility={currentVisibility}
-            selectedObjectNode={selectedObjectNode}
-            transformMode={transformMode}
-            onTransformStart={handleTransformStart}
-            onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)}
-            onTransformFinal={handleTransformFinal}
-            onSelectObject={setSelectedObject}
-            isAnimating={isAnimating}
-            version={version}
-            animationSubSteps={phases[currentPhaseIndex]?.subSteps || []}
-            animationSpring={spring}
-          />
+          <ThreeScene scene={activeScene} visibility={currentVisibility} selectedObjectNode={selectedObjectNode} transformMode={transformMode} onTransformStart={handleTransformStart} onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)} onTransformFinal={handleTransformFinal} onSelectObject={setSelectedObject} isAnimating={isAnimating} version={version} animationSubSteps={phases[currentPhaseIndex]?.subSteps || []} animationSpring={spring} />
         </div>
-        <ViewportToolbar
-          transformMode={transformMode}
-          onSetTransformMode={setTransformMode}
-          onHideSelected={handleHideSelected}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          canUndo={canUndo}
-          canRedo={canRedo}
-        />
+        <ViewportToolbar transformMode={transformMode} onSetTransformMode={setTransformMode} onHideSelected={handleHideSelected} onUndo={handleUndo} onRedo={handleRedo} canUndo={canUndo} canRedo={canRedo} />
         <InstructionPanel
-          phases={phases.map(p => ({
-            id: p.id,
-            name: p.name,
-            subSteps: p.subSteps.map(ss => ({ id: ss.id })),
-          }))}
+          phases={phases}
           currentPhaseIndex={currentPhaseIndex}
           currentSubStepIndex={currentSubStepIndex}
           onPhaseClick={handlePhaseClick}
@@ -279,6 +185,10 @@ export default function Layout3D() {
           onPlay={handleOnPlay}
           onPrevPhase={handlePrevPhase}
           onNextPhase={handleNextPhase}
+          onDeletePhase={handleDeletePhase}
+          onDeleteStep={handleDeleteStep}
+          onReorderPhases={handleReorderPhases}
+          onReorderSteps={handleReorderSteps}
         />
       </div>
     </div>
