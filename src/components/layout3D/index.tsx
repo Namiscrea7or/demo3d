@@ -14,7 +14,7 @@ import TopBar from "./TopBar";
 import usePhaseManager from "@/hooks/usePhaseManager";
 import useAnimationManager from "@/hooks/useAnimationManager";
 import { applyTransforms, extractTransforms } from "@/utils/transformUtils";
-import { exportAndCompressAnimation } from "@/utils/exportUtils"; 
+import { exportAndCompressAnimation, prepareDataForPreview } from "@/utils/exportUtils"; 
 import type { Phase } from '@/types';
 
 const applyVisibility = (scene: Object3D, visibility: Record<string, boolean>) => {
@@ -46,6 +46,11 @@ const applyColors = (
   });
 };
 
+const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+  event.preventDefault();
+  event.returnValue = '';
+};
+
 export default function Layout3D() {
   const [activeScene, setActiveScene] = useState<Object3D | null>(null);
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
@@ -63,6 +68,19 @@ export default function Layout3D() {
     handleUndo, handleRedo, toggleVisibility, resetVisibility, handleUpdateTransformFromSidebar,
     canUndo, canRedo,
   } = usePhaseManager([], activeScene, renderer);
+
+  useEffect(() => {
+    const hasUnsavedData = phases.length > 1 || (phases.length === 1 && phases[0].subSteps.length > 1);
+    if (hasUnsavedData) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    } else {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [phases]);
 
   const handleAnimationStepChange = useCallback((subStepIndex: number) => {
     handleSubStepClick(currentPhaseIndex, subStepIndex);
@@ -139,7 +157,26 @@ export default function Layout3D() {
   const handleHideSelected = () => { if (selectedObject) toggleVisibility(selectedObject); };
 
   const handleExport = useCallback(() => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
     exportAndCompressAnimation(phases);
+    setTimeout(() => {
+        const hasUnsavedData = phases.length > 1 || (phases.length === 1 && phases[0].subSteps.length > 1);
+        if (hasUnsavedData) {
+            window.addEventListener('beforeunload', handleBeforeUnload);
+        }
+    }, 1000);
+  }, [phases]);
+
+  const handlePreview = useCallback(() => {
+    const previewData = prepareDataForPreview(phases);
+    try {
+      sessionStorage.setItem('previewAnimationData', JSON.stringify(previewData));
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.location.href = '/preview';
+    } catch (error) {
+      console.error("Error preview:", error);
+      alert("the data need to animated is too large.");
+    }
   }, [phases]);
 
   const handlePrevPhase = useCallback(() => {
@@ -163,7 +200,7 @@ export default function Layout3D() {
       <Sidebar scene={activeScene} visibility={currentVisibility} toggleVisibility={toggleVisibility} resetVisibility={resetVisibility} selectedObject={selectedObject} onSelectObject={setSelectedObject} selectedObjectNode={selectedObjectNode} onUpdateTransform={handleUpdateTransformFromSidebar} overrideColor={overrideColor} onUpdateColor={handleUpdateColor} />
       
       <div className="flex-1 flex flex-col min-h-0">
-        <TopBar onExport={handleExport} />
+        <TopBar onExport={handleExport} onPreview={handlePreview}/>
 
         <div className="flex-1 relative min-h-0">
           <ThreeScene scene={activeScene} visibility={currentVisibility} selectedObjectNode={selectedObjectNode} transformMode={transformMode} onTransformStart={handleTransformStart} onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)} onTransformFinal={handleTransformFinal} onSelectObject={setSelectedObject} isAnimating={isAnimating} version={version} animationSubSteps={phases[currentPhaseIndex]?.subSteps || []} animationSpring={spring} onRendererReady={setRenderer} />

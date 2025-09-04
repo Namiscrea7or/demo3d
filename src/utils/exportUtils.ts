@@ -1,12 +1,7 @@
 import pako from 'pako';
 import type { Phase } from '@/types';
 
-export const exportAndCompressAnimation = (phases: Phase[]) => {
-  if (phases.length === 0) {
-    alert("Không có dữ liệu để export.");
-    return;
-  }
-
+export const prepareDataForPreview = (phases: Phase[]) => {
   const serializablePhases = phases.map(phase => ({
     ...phase,
     subSteps: phase.subSteps.map(subStep => {
@@ -25,12 +20,19 @@ export const exportAndCompressAnimation = (phases: Phase[]) => {
     }),
   }));
 
-  const dataToExport = { animationData: serializablePhases };
+  return { animationData: serializablePhases };
+};
+
+export const exportAndCompressAnimation = (phases: Phase[]) => {
+  if (phases.length === 0) {
+    alert("No data to export.");
+    return;
+  }
+  
+  const dataToExport = prepareDataForPreview(phases);
 
   try {
-
     const jsonString = JSON.stringify(dataToExport);
-
     const compressedData = pako.gzip(jsonString);
 
     const blob = new Blob([compressedData], { type: 'application/gzip' });
@@ -43,7 +45,7 @@ export const exportAndCompressAnimation = (phases: Phase[]) => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (error) {
-    console.error("Lỗi khi export và nén file:", error);
-    alert("Đã có lỗi xảy ra khi export file. Vui lòng kiểm tra console.");
+    console.error("Error to export and zip file", error);
+    alert("Errỏ, check console.");
   }
 };
