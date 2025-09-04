@@ -6,7 +6,7 @@ import { OrbitControls, Bounds, Grid, TransformControls } from "@react-three/dre
 import { EffectComposer, Outline } from "@react-three/postprocessing";
 import Model from "./Model";
 import * as THREE from 'three';
-import type { Object3D, Scene } from 'three';
+import type { Object3D, Scene, Camera } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 type SubStep = {
@@ -64,10 +64,12 @@ type ThreeSceneProps = {
   onSelectObject: (name: string | null) => void;
   onRendererReady?: (renderer: THREE.WebGLRenderer) => void;
   onSceneReady?: (scene: Scene) => void;
+  onCameraReady?: (camera: Camera) => void;
+  onControlsReady?: (controls: OrbitControlsImpl) => void;
   isAnimating: boolean;
   version: number;
-  animationSpring: any;
   animationSubSteps: SubStep[];
+  animationSpring: any;
 };
 
 function Invalidator({ version }: { version: number }) {
@@ -80,16 +82,24 @@ function Invalidator({ version }: { version: number }) {
 
 function SceneConnector({ 
     onRendererReady, 
-    onSceneReady 
+    onSceneReady,
+    onCameraReady,
+    onControlsReady,
+    controlsRef
 }: { 
-    onRendererReady?: (renderer: THREE.WebGLRenderer) => void, 
-    onSceneReady?: (scene: Scene) => void 
+    onRendererReady?: (renderer: THREE.WebGLRenderer) => void;
+    onSceneReady?: (scene: Scene) => void;
+    onCameraReady?: (camera: Camera) => void;
+    onControlsReady?: (controls: OrbitControlsImpl) => void;
+    controlsRef: React.RefObject<OrbitControlsImpl>;
 }) {
-  const { gl, scene } = useThree();
+  const { gl, scene, camera } = useThree();
   useEffect(() => {
     if (onRendererReady) onRendererReady(gl);
     if (onSceneReady) onSceneReady(scene);
-  }, [gl, scene, onRendererReady, onSceneReady]);
+    if (onCameraReady) onCameraReady(camera);
+    if (onControlsReady && controlsRef.current) onControlsReady(controlsRef.current);
+  }, [gl, scene, camera, controlsRef, onRendererReady, onSceneReady, onCameraReady, onControlsReady]);
   return null;
 }
 
@@ -104,6 +114,8 @@ export default function ThreeScene({
   onSelectObject,
   onRendererReady,
   onSceneReady,
+  onCameraReady,
+  onControlsReady,
   isAnimating,
   version,
   animationSpring,
@@ -136,7 +148,13 @@ export default function ThreeScene({
     >
       <color attach="background" args={['#435167']} />
       <Invalidator version={version} />
-      <SceneConnector onRendererReady={onRendererReady} onSceneReady={onSceneReady} />
+      <SceneConnector 
+        onRendererReady={onRendererReady} 
+        onSceneReady={onSceneReady} 
+        onCameraReady={onCameraReady}
+        onControlsReady={onControlsReady}
+        controlsRef={orbitControlsRef}
+      />
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1.5} castShadow />
       <Grid args={[100, 100]} cellSize={1} cellThickness={1.5} sectionSize={10} sectionThickness={1} cellColor="#888888" sectionColor="#888888" fadeDistance={80} fadeStrength={1} infiniteGrid />

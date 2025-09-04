@@ -95,31 +95,22 @@ export default function PreviewPage() {
   }
 
   return (
-    <main className="relative w-screen h-screen overflow-hidden">
-      <ThreeScene
-        animationData={animationData}
-        phaseIndex={phaseIndex}
-        subStepIndex={subStepIndex}
-      />
-      
-      <div className="absolute top-5 left-5 flex flex-col space-y-2">
+    <main className="flex w-screen h-screen overflow-hidden">
+      <div className="flex-1 relative min-w-0">
+        <ThreeScene
+          animationData={animationData}
+          phaseIndex={phaseIndex}
+          subStepIndex={subStepIndex}
+        />
         <button 
             onClick={handleExitPreview}
-            className="p-3 bg-red-500 text-white bg-opacity-80 backdrop-blur-md rounded-full shadow-lg hover:bg-opacity-100 transition-all"
+            className="absolute top-5 left-5 p-3 bg-red-500 text-white bg-opacity-80 backdrop-blur-md rounded-full shadow-lg hover:bg-opacity-100 transition-all z-10"
         >
-           <LogOut size={24} />
+            <LogOut size={24} />
         </button>
-        {!isPanelVisible && (
-          <button 
-              onClick={() => setIsPanelVisible(true)}
-              className="p-3 bg-white bg-opacity-80 backdrop-blur-md rounded-full shadow-lg hover:bg-opacity-100 transition-all"
-          >
-            <BookOpen size={24} className="text-gray-700" />
-          </button>
-        )}
       </div>
-
-      {isPanelVisible && (
+      
+      {isPanelVisible ? (
         <InstructionPanel
           animationData={animationData}
           currentPhaseIndex={phaseIndex}
@@ -130,6 +121,13 @@ export default function PreviewPage() {
           onPlayToggle={handlePlayToggle}
           onClose={() => setIsPanelVisible(false)}
         />
+      ) : (
+        <button 
+            onClick={() => setIsPanelVisible(true)}
+            className="absolute top-5 right-5 p-3 bg-white bg-opacity-80 backdrop-blur-md rounded-full shadow-lg hover:bg-opacity-100 transition-all z-10"
+        >
+          <BookOpen size={24} className="text-gray-700" />
+        </button>
       )}
     </main>
   );

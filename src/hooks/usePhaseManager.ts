@@ -2,53 +2,78 @@
 
 import { useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Object3D, Vector3, Euler } from 'three';
+import type { Object3D, Vector3, Euler, PerspectiveCamera, WebGLRenderTarget, Scene, Camera } from 'three';
+import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { Phase, SubStep, TransformState } from '@/types';
 import { extractTransforms } from '@/utils/transformUtils';
 import * as THREE from 'three';
 import { arrayMove } from '@dnd-kit/sortable';
 
-const captureThumbnail = (gl: THREE.WebGLRenderer): string => {
+const captureThumbnail = (
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.PerspectiveCamera,
+  target: THREE.WebGLRenderTarget
+): string => {
   try {
-    const mainCanvas = gl.domElement;
-    
-    // 1. Đặt kích thước cho thumbnail
-    const thumbnailWidth = 200;
-    const thumbnailHeight = (mainCanvas.height / mainCanvas.width) * thumbnailWidth;
+    scene.updateMatrixWorld(true);
 
-    // 2. Tạo một canvas tạm thời, không hiển thị trên màn hình
+    renderer.setRenderTarget(target);
+    renderer.clear();
+    renderer.render(scene, camera);
+
+    const buffer = new Uint8Array(target.width * target.height * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, target.width, target.height, buffer);
+
+    renderer.setRenderTarget(null);
+
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = thumbnailWidth;
-    tempCanvas.height = thumbnailHeight;
-
-    const ctx = tempCanvas.getContext('2d');
-    if (!ctx) {
-      // Nếu không lấy được context, quay lại cách làm cũ
-      return mainCanvas.toDataURL('image/jpeg', 0.7);
-    }
+    tempCanvas.width = target.width;
+    tempCanvas.height = target.height;
+    const ctx = tempCanvas.getContext('2d')!;
     
-    // 3. Vẽ nội dung của canvas chính vào canvas tạm thời với kích thước nhỏ hơn
-    ctx.drawImage(mainCanvas, 0, 0, thumbnailWidth, thumbnailHeight);
+    const imageData = new ImageData(new Uint8ClampedArray(buffer), target.width, target.height);
+    ctx.putImageData(imageData, 0, 0);
 
-    // 4. Xuất ảnh từ canvas tạm thời với định dạng JPEG và chất lượng nén
-    // Chất lượng từ 0.0 (thấp nhất) đến 1.0 (cao nhất). 0.7 là một sự cân bằng tốt.
-    return tempCanvas.toDataURL('image/jpeg', 0.7);
+    const flipCanvas = document.createElement('canvas');
+    flipCanvas.width = target.width;
+    flipCanvas.height = target.height;
+    const flipCtx = flipCanvas.getContext('2d')!;
+    
+    flipCtx.translate(0, target.height);
+    flipCtx.scale(1, -1);
+    flipCtx.drawImage(tempCanvas, 0, 0);
+
+    return flipCanvas.toDataURL('image/jpeg', 0.7);
 
   } catch (error) {
-    console.error("Lỗi khi tạo thumbnail tối ưu, quay lại phương pháp mặc định:", error);
-    return gl.domElement.toDataURL('image/png');
+    console.error("error thumbnail off-screen:", error);
+    renderer.setRenderTarget(null);
+    return '';
   }
 };
 
 export default function usePhaseManager(
   initialPhases: Phase[],
-  activeScene: Object3D | null,
-  gl: THREE.WebGLRenderer | undefined
+  mainThreeScene: Scene | null,
+  gl: THREE.WebGLRenderer | undefined,
+  thumbnailCamera: PerspectiveCamera | undefined,
+  thumbnailTarget: WebGLRenderTarget | undefined,
+  mainCamera: Camera | null,
+  mainControls: OrbitControlsImpl | null
 ) {
   const [phases, setPhases] = useState<Phase[]>(initialPhases);
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
   const [currentSubStepIndex, setCurrentSubStepIndex] = useState(0);
   const [initialTransformState, setInitialTransformState] = useState<Record<string, TransformState> | null>(null);
+  
+  const captureCurrentCameraState = useCallback(() => {
+    if (!mainCamera || !mainControls) return undefined;
+    return {
+      position: mainCamera.position.clone(),
+      target: mainControls.target.clone()
+    };
+  }, [mainCamera, mainControls]);
 
   const currentVisibility = phases[currentPhaseIndex]?.subSteps[currentSubStepIndex]?.visibility || {};
 
@@ -69,7 +94,7 @@ export default function usePhaseManager(
   };
 
   const handleAddPhase = () => {
-    if (!activeScene || phases.length === 0 || !gl) return;
+    if (!mainThreeScene || phases.length === 0 || !gl || !thumbnailCamera || !thumbnailTarget) return;
     const defaultSubStep = phases[0]?.subSteps[0];
     if (!defaultSubStep) {
       console.error("Cannot find default state to create a new phase.");
@@ -77,11 +102,13 @@ export default function usePhaseManager(
     }
     const newTransforms = { ...defaultSubStep.transforms };
     const newVisibility = { ...defaultSubStep.visibility };
-    const newThumbnail = captureThumbnail(gl);
+    const newThumbnail = captureThumbnail(gl, mainThreeScene, thumbnailCamera, thumbnailTarget);
+    const newCameraState = captureCurrentCameraState();
 
     const newSubStep: SubStep = {
       id: uuidv4(),
       thumbnail: newThumbnail,
+      cameraState: newCameraState,
       transforms: newTransforms,
       visibility: newVisibility,
       transformHistory: { past: [], future: [] },
@@ -100,16 +127,32 @@ export default function usePhaseManager(
   };
 
   const handleAddSubStep = (phaseIndex: number) => {
-    if (!activeScene || !gl) return;
+    if (!mainThreeScene || !gl || !thumbnailCamera || !thumbnailTarget) return;
     const currentPhase = phases[phaseIndex];
     const lastSubStep = currentPhase?.subSteps[currentPhase.subSteps.length - 1];
-    const newTransforms = lastSubStep?.transforms || extractTransforms(activeScene);
+    
+    let newTransforms;
+    if (lastSubStep) {
+        newTransforms = lastSubStep.transforms;
+    } else if (mainThreeScene) {
+        const model = mainThreeScene.children.find(child => child.type !== 'Grid' && child.type !== 'AxesHelper' && child.type.includes('Light') === false && child.type.includes('Camera') === false);
+        if (model) {
+            newTransforms = extractTransforms(model);
+        } else {
+            newTransforms = {};
+        }
+    } else {
+        newTransforms = {};
+    }
+
     const newVisibility = lastSubStep?.visibility || {};
-    const newThumbnail = captureThumbnail(gl);
+    const newThumbnail = captureThumbnail(gl, mainThreeScene, thumbnailCamera, thumbnailTarget);
+    const newCameraState = captureCurrentCameraState();
 
     const newSubStep: SubStep = {
       id: uuidv4(),
       thumbnail: newThumbnail,
+      cameraState: newCameraState,
       transforms: newTransforms,
       visibility: newVisibility,
       transformHistory: { past: [], future: [] },
@@ -235,11 +278,13 @@ export default function usePhaseManager(
   };
 
   const handleTransformFinal = () => {
-    if (initialTransformState && gl) {
-      const newThumbnail = captureThumbnail(gl);
+    if (initialTransformState && gl && mainThreeScene && thumbnailCamera && thumbnailTarget) {
+      const newThumbnail = captureThumbnail(gl, mainThreeScene, thumbnailCamera, thumbnailTarget);
+      const newCameraState = captureCurrentCameraState();
       updateCurrentSubStep(subStep => ({
         ...subStep,
         thumbnail: newThumbnail,
+        cameraState: newCameraState,
         transformHistory: {
           past: [...subStep.transformHistory.past, initialTransformState],
           future: [],
@@ -285,9 +330,9 @@ export default function usePhaseManager(
   };
 
   const resetVisibility = () => {
-    if (!activeScene) return;
+    if (!mainThreeScene) return;
     const newVis: Record<string, boolean> = {};
-    activeScene.traverse(obj => { if (obj instanceof THREE.Mesh) newVis[obj.name] = true; });
+    mainThreeScene.traverse(obj => { if (obj instanceof THREE.Mesh) newVis[obj.name] = true; });
     updateCurrentSubStep(subStep => ({ ...subStep, visibility: newVis }));
   };
 
@@ -306,11 +351,13 @@ export default function usePhaseManager(
     newTransforms[name] = targetTransform;
 
     if (isFinal) {
-      const newThumbnail = gl ? captureThumbnail(gl) : undefined;
+      const newThumbnail = (gl && mainThreeScene && thumbnailCamera && thumbnailTarget) ? captureThumbnail(gl, mainThreeScene, thumbnailCamera, thumbnailTarget) : undefined;
+      const newCameraState = captureCurrentCameraState();
       updateCurrentSubStep(subStep => ({
         ...subStep,
         transforms: newTransforms,
         thumbnail: newThumbnail ?? subStep.thumbnail,
+        cameraState: newCameraState ?? subStep.cameraState,
         transformHistory: {
           past: [...subStep.transformHistory.past, oldTransforms],
           future: [],

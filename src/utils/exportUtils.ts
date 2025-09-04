@@ -5,9 +5,7 @@ export const prepareDataForPreview = (phases: Phase[]) => {
   const serializablePhases = phases.map(phase => ({
     ...phase,
     subSteps: phase.subSteps.map(subStep => {
-      const { transformHistory, ...restOfSubStep } = subStep;
-      
-      const serializableTransforms = Object.entries(restOfSubStep.transforms).reduce((acc, [key, transform]) => {
+      const serializableTransforms = Object.entries(subStep.transforms).reduce((acc, [key, transform]) => {
         acc[key] = {
           position: transform.position.toArray(),
           quaternion: transform.quaternion.toArray(),
@@ -15,8 +13,22 @@ export const prepareDataForPreview = (phases: Phase[]) => {
         };
         return acc;
       }, {} as Record<string, any>);
+      
+      let serializableCameraState;
+      if (subStep.cameraState) {
+        serializableCameraState = {
+          position: subStep.cameraState.position.toArray(),
+          target: subStep.cameraState.target.toArray(),
+        };
+      }
 
-      return { ...restOfSubStep, transforms: serializableTransforms };
+      return { 
+        id: subStep.id,
+        thumbnail: subStep.thumbnail,
+        visibility: subStep.visibility,
+        transforms: serializableTransforms,
+        cameraState: serializableCameraState,
+      };
     }),
   }));
 
@@ -25,7 +37,7 @@ export const prepareDataForPreview = (phases: Phase[]) => {
 
 export const exportAndCompressAnimation = (phases: Phase[]) => {
   if (phases.length === 0) {
-    alert("No data to export.");
+    alert("Không có dữ liệu để export.");
     return;
   }
   
@@ -45,7 +57,7 @@ export const exportAndCompressAnimation = (phases: Phase[]) => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (error) {
-    console.error("Error to export and zip file", error);
-    alert("Errỏ, check console.");
+    console.error("Lỗi khi export và nén file:", error);
+    alert("checkconsole.");
   }
 };

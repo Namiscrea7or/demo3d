@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { v4 as uuidv4 } from 'uuid';
-import type { Object3D, Material } from 'three';
+import { Object3D, Material, Scene, Camera } from 'three';
+import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 
 import Sidebar from "../sidebar/sidebar";
@@ -16,6 +17,9 @@ import useAnimationManager from "@/hooks/useAnimationManager";
 import { applyTransforms, extractTransforms } from "@/utils/transformUtils";
 import { exportAndCompressAnimation, prepareDataForPreview } from "@/utils/exportUtils"; 
 import type { Phase } from '@/types';
+
+const THUMBNAIL_WIDTH = 200;
+const THUMBNAIL_HEIGHT = 150;
 
 const applyVisibility = (scene: Object3D, visibility: Record<string, boolean>) => {
   scene.traverse(obj => { if (obj instanceof THREE.Mesh) obj.visible = visibility[obj.name] ?? true; });
@@ -53,12 +57,26 @@ const handleBeforeUnload = (event: BeforeUnloadEvent) => {
 
 export default function Layout3D() {
   const [activeScene, setActiveScene] = useState<Object3D | null>(null);
+  const [mainThreeScene, setMainThreeScene] = useState<Scene | null>(null);
+  const [mainCamera, setMainCamera] = useState<Camera | null>(null);
+  const [mainControls, setMainControls] = useState<OrbitControlsImpl | null>(null);
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [transformMode, setTransformMode] = useState<'select' | 'translate' | 'rotate' | 'scale'>('translate');
   const [version, setVersion] = useState(0);
   const [renderer, setRenderer] = useState<THREE.WebGLRenderer | undefined>(undefined);
 
   const originalMaterials = useRef(new Map<string, Material | Material[]>());
+
+  const thumbnailTarget = useMemo(() => {
+    return new THREE.WebGLRenderTarget(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+  }, []);
+
+  const thumbnailCamera = useMemo(() => {
+    const cam = new THREE.PerspectiveCamera(50, THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT, 0.1, 100);
+    cam.position.set(5, 4, 7);
+    cam.lookAt(0, 1, 0);
+    return cam;
+  }, []);
 
   const {
     phases, setPhases, currentPhaseIndex, currentSubStepIndex, currentVisibility,
@@ -67,7 +85,15 @@ export default function Layout3D() {
     handleUpdatePhaseColor, handleTransformStart, handleTransformChange, handleTransformFinal,
     handleUndo, handleRedo, toggleVisibility, resetVisibility, handleUpdateTransformFromSidebar,
     canUndo, canRedo,
-  } = usePhaseManager([], activeScene, renderer);
+  } = usePhaseManager(
+      [], 
+      mainThreeScene, 
+      renderer,
+      thumbnailCamera,
+      thumbnailTarget,
+      mainCamera,
+      mainControls
+  );
 
   useEffect(() => {
     const hasUnsavedData = phases.length > 1 || (phases.length === 1 && phases[0].subSteps.length > 1);
@@ -119,21 +145,47 @@ export default function Layout3D() {
   const currentSubStep = useMemo(() => currentPhase?.subSteps[currentSubStepIndex], [currentPhase, currentSubStepIndex]);
 
   useEffect(() => {
-    if (activeScene && renderer && phases.length === 1 && phases[0].subSteps.length === 1 && !phases[0].subSteps[0].thumbnail) {
-      const initialThumbnail = renderer.domElement.toDataURL('image/png');
-      setPhases(prevPhases => {
-        const newPhases = [...prevPhases];
-        newPhases[0] = {
-          ...newPhases[0],
-          subSteps: [{
-            ...newPhases[0].subSteps[0],
-            thumbnail: initialThumbnail,
-          }],
+    if (mainThreeScene && renderer && thumbnailCamera && thumbnailTarget && phases.length === 1 && phases[0].subSteps.length === 1 && !phases[0].subSteps[0].thumbnail) {
+      setTimeout(() => {
+        const newThumbnail = (gl: any, scene: any, cam: any, target: any) => {
+            scene.updateMatrixWorld(true);
+            gl.setRenderTarget(target);
+            gl.clear();
+            gl.render(scene, cam);
+            gl.setRenderTarget(null);
+            const buffer = new Uint8Array(target.width * target.height * 4);
+            gl.readRenderTargetPixels(target, 0, 0, target.width, target.height, buffer);
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = target.width;
+            tempCanvas.height = target.height;
+            const ctx = tempCanvas.getContext('2d')!;
+            const imageData = new ImageData(new Uint8ClampedArray(buffer), target.width, target.height);
+            ctx.putImageData(imageData, 0, 0);
+            const flipCanvas = document.createElement('canvas');
+            flipCanvas.width = target.width;
+            flipCanvas.height = target.height;
+            const flipCtx = flipCanvas.getContext('2d')!;
+            flipCtx.translate(0, target.height);
+            flipCtx.scale(1, -1);
+            flipCtx.drawImage(tempCanvas, 0, 0);
+            return flipCanvas.toDataURL('image/jpeg', 0.7);
         };
-        return newPhases;
-      });
+        const initialThumbnail = newThumbnail(renderer, mainThreeScene, thumbnailCamera, thumbnailTarget);
+
+        setPhases(prevPhases => {
+            const newPhases = [...prevPhases];
+            newPhases[0] = {
+            ...newPhases[0],
+            subSteps: [{
+                ...newPhases[0].subSteps[0],
+                thumbnail: initialThumbnail,
+            }],
+            };
+            return newPhases;
+        });
+      }, 100);
     }
-  }, [activeScene, renderer, phases, setPhases]);
+  }, [mainThreeScene, renderer, phases, setPhases, thumbnailCamera, thumbnailTarget]);
 
   useEffect(() => {
     if (activeScene && currentSubStep && currentPhase) {
@@ -171,13 +223,22 @@ export default function Layout3D() {
     const previewData = prepareDataForPreview(phases);
     try {
       sessionStorage.setItem('previewAnimationData', JSON.stringify(previewData));
+
+      if (mainCamera && mainControls) {
+        const cameraState = {
+          position: mainCamera.position.toArray(),
+          target: mainControls.target.toArray(),
+        };
+        sessionStorage.setItem('previewCameraState', JSON.stringify(cameraState));
+      }
+
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.location.href = '/preview';
     } catch (error) {
-      console.error("Error preview:", error);
-      alert("the data need to animated is too large.");
+      console.error("error data preview:", error);
+      alert("anim data too large");
     }
-  }, [phases]);
+  }, [phases, mainCamera, mainControls]);
 
   const handlePrevPhase = useCallback(() => {
     const newIndex = currentPhaseIndex - 1;
@@ -200,10 +261,27 @@ export default function Layout3D() {
       <Sidebar scene={activeScene} visibility={currentVisibility} toggleVisibility={toggleVisibility} resetVisibility={resetVisibility} selectedObject={selectedObject} onSelectObject={setSelectedObject} selectedObjectNode={selectedObjectNode} onUpdateTransform={handleUpdateTransformFromSidebar} overrideColor={overrideColor} onUpdateColor={handleUpdateColor} />
       
       <div className="flex-1 flex flex-col min-h-0">
-        <TopBar onExport={handleExport} onPreview={handlePreview}/>
+        <TopBar onExport={handleExport} onPreview={handlePreview} />
 
         <div className="flex-1 relative min-h-0">
-          <ThreeScene scene={activeScene} visibility={currentVisibility} selectedObjectNode={selectedObjectNode} transformMode={transformMode} onTransformStart={handleTransformStart} onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)} onTransformFinal={handleTransformFinal} onSelectObject={setSelectedObject} isAnimating={isAnimating} version={version} animationSubSteps={phases[currentPhaseIndex]?.subSteps || []} animationSpring={spring} onRendererReady={setRenderer} />
+          <ThreeScene 
+            scene={activeScene} 
+            visibility={currentVisibility} 
+            selectedObjectNode={selectedObjectNode} 
+            transformMode={transformMode} 
+            onTransformStart={handleTransformStart} 
+            onTransformChange={() => activeScene && handleTransformChange(selectedObject, activeScene)} 
+            onTransformFinal={handleTransformFinal} 
+            onSelectObject={setSelectedObject} 
+            isAnimating={isAnimating} 
+            version={version} 
+            animationSubSteps={phases[currentPhaseIndex]?.subSteps || []} 
+            animationSpring={spring} 
+            onRendererReady={setRenderer} 
+            onSceneReady={setMainThreeScene}
+            onCameraReady={setMainCamera}
+            onControlsReady={setMainControls}
+          />
           <ViewportToolbar transformMode={transformMode} onSetTransformMode={setTransformMode} onHideSelected={handleHideSelected} onUndo={handleUndo} onRedo={handleRedo} canUndo={canUndo} canRedo={canRedo} />
         </div>
         

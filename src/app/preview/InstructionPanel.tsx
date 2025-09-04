@@ -40,7 +40,7 @@ export default function InstructionPanel({
   const totalStepsInPhase = currentPhase?.subSteps.length || 0;
 
   return (
-    <div className="absolute top-0 right-0 h-full w-80 bg-white bg-opacity-80 backdrop-blur-md shadow-lg flex flex-col p-6 border-l border-gray-200 text-gray-800">
+    <div className="h-full w-80 flex-shrink-0 bg-white bg-opacity-80 backdrop-blur-md shadow-lg flex flex-col p-6 border-l border-gray-200 text-gray-800">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Step {currentSubStepIndex + 1}</h1>
         <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200">

@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Object3D } from 'three';
+import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 const ANIMATION_DURATION = 0.5;
 
@@ -14,10 +15,10 @@ type Props = {
   subStepIndex: number;
 };
 
-const tempVec3 = new THREE.Vector3();
-const tempQuat = new THREE.Quaternion();
 const fromPos = new THREE.Vector3();
 const toPos = new THREE.Vector3();
+const fromTarget = new THREE.Vector3();
+const toTarget = new THREE.Vector3();
 const fromQuat = new THREE.Quaternion();
 const toQuat = new THREE.Quaternion();
 const fromScale = new THREE.Vector3();
@@ -25,46 +26,13 @@ const toScale = new THREE.Vector3();
 const fromColor = new THREE.Color();
 const toColor = new THREE.Color();
 
-const applyState = (
-  scene: Object3D,
-  phaseData: any,
-  stepData: any,
-  originalColors: Map<string, THREE.Color>
-) => {
-  if (!phaseData || !stepData) return;
-
-  scene.traverse((child) => {
-    const transform = stepData.transforms[child.name];
-    if (transform) {
-      child.position.fromArray(transform.position);
-      child.quaternion.fromArray(transform.quaternion);
-      child.scale.fromArray(transform.scale);
-    }
-
-    if (child instanceof THREE.Mesh) {
-      const colorHex = phaseData.colorOverrides[child.name];
-      const defaultColor = originalColors.get(child.uuid);
-      if (colorHex) {
-        child.material.color.set(colorHex);
-      } else if (defaultColor) {
-        child.material.color.copy(defaultColor);
-      }
-    }
-
-    const visibility = stepData.visibility[child.name] ?? true;
-    if (child.visible !== visibility) {
-      child.visible = visibility;
-    }
-  });
-};
-
 export default function AnimatedModel({ scene, animationData, phaseIndex, subStepIndex }: Props) {
-  const isAnimatingRef = useRef(false);
-  const animationProgressRef = useRef(0);
-  const fromStateRef = useRef<any>(null);
-  const toStateRef = useRef<any>(null);
+  const { camera, controls } = useThree();
+  const orbitControls = controls as OrbitControlsImpl | undefined;
+
+  const animationProgressRef = useRef(1);
+  const previousStateRef = useRef({ phaseIndex, subStepIndex });
   const originalColorsRef = useRef<Map<string, THREE.Color>>(new Map());
-  const hasInitializedRef = useRef(false);
 
   useEffect(() => {
     if (!scene || originalColorsRef.current.size > 0) return;
@@ -77,57 +45,57 @@ export default function AnimatedModel({ scene, animationData, phaseIndex, subSte
   }, [scene]);
 
   useEffect(() => {
-    if (!animationData) return;
-
-    const newPhaseData = animationData[phaseIndex];
-    const newStepData = newPhaseData?.subSteps[subStepIndex];
-
-    if (!newPhaseData || !newStepData) return;
-
-    if (!hasInitializedRef.current || !toStateRef.current) {
-      applyState(scene, newPhaseData, newStepData, originalColorsRef.current);
-      toStateRef.current = { phase: newPhaseData, step: newStepData };
-      hasInitializedRef.current = true;
-    } else {
-      fromStateRef.current = toStateRef.current;
-      toStateRef.current = { phase: newPhaseData, step: newStepData };
-      animationProgressRef.current = 0;
-      isAnimatingRef.current = true;
+    const isNewStep = phaseIndex !== previousStateRef.current.phaseIndex || subStepIndex !== previousStateRef.current.subStepIndex;
+    if (isNewStep) {
+        animationProgressRef.current = 0;
     }
-  }, [phaseIndex, subStepIndex, animationData, scene]);
+  }, [phaseIndex, subStepIndex]);
 
   useFrame((state, delta) => {
-    if (!isAnimatingRef.current || !fromStateRef.current || !toStateRef.current) return;
-    
-    if (animationProgressRef.current >= 1) {
-      isAnimatingRef.current = false;
-      applyState(scene, toStateRef.current.phase, toStateRef.current.step, originalColorsRef.current);
+    const progress = animationProgressRef.current;
+    if (progress >= 1) {
+      previousStateRef.current = { phaseIndex, subStepIndex };
       return;
     }
 
-    animationProgressRef.current += delta / ANIMATION_DURATION;
-    const progress = Math.min(animationProgressRef.current, 1);
+    const newProgress = Math.min(progress + delta / ANIMATION_DURATION, 1);
+    animationProgressRef.current = newProgress;
 
-    const fromStepData = fromStateRef.current.step;
-    const toStepData = toStateRef.current.step;
-    const fromPhaseData = fromStateRef.current.phase;
-    const toPhaseData = toStateRef.current.phase;
+    const { phaseIndex: prevPhaseIndex, subStepIndex: prevSubStepIndex } = previousStateRef.current;
 
+    const fromStepData = animationData[prevPhaseIndex]?.subSteps[prevSubStepIndex];
+    const toStepData = animationData[phaseIndex]?.subSteps[subStepIndex];
+    const fromPhaseData = animationData[prevPhaseIndex];
+    const toPhaseData = animationData[phaseIndex];
+
+    if (!fromStepData || !toStepData || !fromPhaseData || !toPhaseData) return;
+
+    if (fromStepData.cameraState && toStepData.cameraState && orbitControls) {
+      fromPos.fromArray(fromStepData.cameraState.position);
+      toPos.fromArray(toStepData.cameraState.position);
+      camera.position.lerpVectors(fromPos, toPos, newProgress);
+
+      fromTarget.fromArray(fromStepData.cameraState.target);
+      toTarget.fromArray(toStepData.cameraState.target);
+      orbitControls.target.lerpVectors(fromTarget, toTarget, newProgress);
+      orbitControls.update();
+    }
+    
     scene.traverse((child) => {
       const fromTransform = fromStepData.transforms[child.name];
       const toTransform = toStepData.transforms[child.name];
       if (fromTransform && toTransform) {
         fromPos.fromArray(fromTransform.position);
         toPos.fromArray(toTransform.position);
-        child.position.lerpVectors(fromPos, toPos, progress);
+        child.position.lerpVectors(fromPos, toPos, newProgress);
 
         fromQuat.fromArray(fromTransform.quaternion);
         toQuat.fromArray(toTransform.quaternion);
-        child.quaternion.slerpQuaternions(fromQuat, toQuat, progress);
+        child.quaternion.slerpQuaternions(fromQuat, toQuat, newProgress);
         
         fromScale.fromArray(fromTransform.scale);
         toScale.fromArray(toTransform.scale);
-        child.scale.lerpVectors(fromScale, toScale, progress);
+        child.scale.lerpVectors(fromScale, toScale, newProgress);
       }
 
       if (child instanceof THREE.Mesh) {
@@ -137,12 +105,12 @@ export default function AnimatedModel({ scene, animationData, phaseIndex, subSte
             const toColorHex = toPhaseData.colorOverrides[child.name];
             fromColor.set(fromColorHex || defaultColor);
             toColor.set(toColorHex || defaultColor);
-            child.material.color.copy(fromColor).lerp(toColor, progress);
+            child.material.color.copy(fromColor).lerp(toColor, newProgress);
         }
       }
-
+      
       const toVisibility = toStepData.visibility[child.name] ?? true;
-      if (child.visible !== toVisibility) {
+      if (child.visible !== toVisibility && newProgress > 0.5) {
         child.visible = toVisibility;
       }
     });
