@@ -1,15 +1,17 @@
-"use client";
+// app/edit/[id]/page.tsx
+// server component - đơn giản + chắc chắn
+import React from "react";
 
-import dynamic from 'next/dynamic';
+type Props = {
+  params: { id: string };
+};
 
-const Layout3D = dynamic(
-  () => import('../components/layout3D/index'), 
-  { 
-    ssr: false,
-    loading: () => <p className="flex h-screen w-screen items-center justify-center bg-gray-900 text-white">Loading 3D Scene...</p> 
-  }
-);
-
-export default function Page() {
-  return <Layout3D />;
+export default function EditPage({ params }: Props) {
+  const { id } = params;
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <h1 className="text-2xl font-medium">Editing Project ID: {id}</h1>
+      {/* import Layout3D nếu cần */}
+    </div>
+  );
 }
