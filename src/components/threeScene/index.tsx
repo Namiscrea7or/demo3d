@@ -8,6 +8,7 @@ import Model from "./Model";
 import * as THREE from 'three';
 import type { Object3D, Scene, Camera } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { EnvironmentState } from "@/types";
 
 type SubStep = {
   transforms: Record<string, any>;
@@ -70,7 +71,9 @@ type ThreeSceneProps = {
   version: number;
   animationSpring: any;
   animationSubSteps: SubStep[];
-  environmentProps: any;
+  environmentProps: {
+    environmentState: EnvironmentState;
+  };
 };
 
 function Invalidator({ version }: { version: number }) {
@@ -161,13 +164,13 @@ export default function ThreeScene({
       />
       
       <ambientLight 
-        color={environmentProps.ambientLight.color} 
-        intensity={environmentProps.ambientLight.intensity} 
+        color={environmentProps.environmentState.ambientLight.color} 
+        intensity={environmentProps.environmentState.ambientLight.intensity} 
       />
       <directionalLight 
-        color={environmentProps.directionalLight.color} 
-        intensity={environmentProps.directionalLight.intensity} 
-        position={environmentProps.directionalLight.position as [number, number, number]}
+        color={environmentProps.environmentState.directionalLight.color} 
+        intensity={environmentProps.environmentState.directionalLight.intensity} 
+        position={environmentProps.environmentState.directionalLight.position}
         castShadow 
       />
       

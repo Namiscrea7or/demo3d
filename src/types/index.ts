@@ -1,5 +1,19 @@
 import type { Vector3, Quaternion } from 'three';
 
+export type LightState = {
+  color: string;
+  intensity: number;
+};
+
+export type DirectionalLightState = LightState & {
+  position: [number, number, number];
+};
+
+export type EnvironmentState = {
+  ambientLight: LightState;
+  directionalLight: DirectionalLightState;
+};
+
 export type CameraState = {
   position: Vector3;
   target: Vector3;
@@ -28,4 +42,9 @@ export type Phase = {
   name: string;
   subSteps: SubStep[];
   colorOverrides: Record<string, string>;
+};
+
+export type AnimationProject = {
+  environment: EnvironmentState;
+  animationData: Phase[];
 };

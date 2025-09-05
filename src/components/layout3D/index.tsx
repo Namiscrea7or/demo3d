@@ -16,7 +16,7 @@ import usePhaseManager from "@/hooks/usePhaseManager";
 import useAnimationManager from "@/hooks/useAnimationManager";
 import { applyTransforms, extractTransforms } from "@/utils/transformUtils";
 import { exportAndCompressAnimation, prepareDataForPreview } from "@/utils/exportUtils"; 
-import type { Phase } from '@/types';
+import type { Phase, EnvironmentState } from '@/types';
 
 const THUMBNAIL_WIDTH = 200;
 const THUMBNAIL_HEIGHT = 150;
@@ -65,11 +65,9 @@ export default function Layout3D() {
   const [version, setVersion] = useState(0);
   const [renderer, setRenderer] = useState<THREE.WebGLRenderer | undefined>(undefined);
 
-  const [ambientLight, setAmbientLight] = useState({ color: '#ffffff', intensity: 0.3 });
-  const [directionalLight, setDirectionalLight] = useState({
-    color: '#ffffff',
-    intensity: 1.5,
-    position: [5, 5, 5],
+  const [environmentState, setEnvironmentState] = useState<EnvironmentState>({
+    ambientLight: { color: '#ffffff', intensity: 0.3 },
+    directionalLight: { color: '#ffffff', intensity: 1.5, position: [5, 5, 5] },
   });
 
   const originalMaterials = useRef(new Map<string, Material | Material[]>());
@@ -217,17 +215,17 @@ export default function Layout3D() {
 
   const handleExport = useCallback(() => {
     window.removeEventListener('beforeunload', handleBeforeUnload);
-    exportAndCompressAnimation(phases);
+    exportAndCompressAnimation(phases, environmentState);
     setTimeout(() => {
         const hasUnsavedData = phases.length > 1 || (phases.length === 1 && phases[0].subSteps.length > 1);
         if (hasUnsavedData) {
             window.addEventListener('beforeunload', handleBeforeUnload);
         }
     }, 1000);
-  }, [phases]);
+  }, [phases, environmentState]);
 
   const handlePreview = useCallback(() => {
-    const previewData = prepareDataForPreview(phases);
+    const previewData = prepareDataForPreview(phases, environmentState);
     try {
       sessionStorage.setItem('previewAnimationData', JSON.stringify(previewData));
 
@@ -245,7 +243,7 @@ export default function Layout3D() {
       console.error("Lỗi khi chuẩn bị dữ liệu preview:", error);
       alert("Dữ liệu animation quá lớn để xem trước. Vui lòng giảm bớt số step hoặc thumbnail.");
     }
-  }, [phases, mainCamera, mainControls]);
+  }, [phases, environmentState, mainCamera, mainControls]);
 
   const handlePrevPhase = useCallback(() => {
     const newIndex = currentPhaseIndex - 1;
@@ -264,8 +262,7 @@ export default function Layout3D() {
   const overrideColor = selectedObjectColorHex ? new THREE.Color(selectedObjectColorHex) : null;
   
   const environmentProps = {
-    ambientLight, setAmbientLight,
-    directionalLight, setDirectionalLight,
+    environmentState, setEnvironmentState
   };
 
   return (

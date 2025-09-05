@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import dynamic from 'next/dynamic';
 import { BookOpen, LogOut } from "lucide-react";
-import type { Phase } from '@/types'; 
+import type { Phase, AnimationProject } from '@/types'; 
 import InstructionPanel from "./InstructionPanel";
 
 const ThreeScene = dynamic(() => import('./ThreeScene'), { ssr: false });
 
 export default function PreviewPage() {
-  const [animationData, setAnimationData] = useState<Phase[] | null>(null);
+  const [projectData, setProjectData] = useState<AnimationProject | null>(null);
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [subStepIndex, setSubStepIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -20,7 +20,7 @@ export default function PreviewPage() {
       const jsonData = sessionStorage.getItem('previewAnimationData');
       if (jsonData) {
         const data = JSON.parse(jsonData);
-        setAnimationData(data.animationData);
+        setProjectData(data);
       } else {
         console.error("Không tìm thấy dữ liệu preview.");
       }
@@ -34,23 +34,23 @@ export default function PreviewPage() {
   };
 
   const handleNextPhase = useCallback(() => {
-    if (!animationData || phaseIndex >= animationData.length - 1) return;
+    if (!projectData || phaseIndex >= projectData.animationData.length - 1) return;
     const newPhaseIndex = phaseIndex + 1;
     setPhaseIndex(newPhaseIndex);
     setSubStepIndex(0);
     setIsPlaying(false);
-  }, [animationData, phaseIndex]);
+  }, [projectData, phaseIndex]);
 
   useEffect(() => {
-    if (!isPlaying || !animationData) return;
-    const currentPhase = animationData[phaseIndex];
+    if (!isPlaying || !projectData) return;
+    const currentPhase = projectData.animationData[phaseIndex];
     if (!currentPhase) return;
 
     const interval = setInterval(() => {
       setSubStepIndex((prevIndex) => {
         const isLastStepInPhase = prevIndex >= currentPhase.subSteps.length - 1;
         if (isLastStepInPhase) {
-          const isLastPhaseOverall = phaseIndex >= animationData.length - 1;
+          const isLastPhaseOverall = phaseIndex >= projectData.animationData.length - 1;
           if (isLastPhaseOverall) {
             setIsPlaying(false);
             return prevIndex;
@@ -64,7 +64,7 @@ export default function PreviewPage() {
     }, 1500); 
 
     return () => clearInterval(interval);
-  }, [isPlaying, phaseIndex, animationData, handleNextPhase]);
+  }, [isPlaying, phaseIndex, projectData, handleNextPhase]);
 
 
   const handlePrevPhase = () => {
@@ -76,10 +76,10 @@ export default function PreviewPage() {
   };
 
   const handlePlayToggle = () => {
-    if (!animationData) return;
-    const currentPhase = animationData[phaseIndex];
+    if (!projectData) return;
+    const currentPhase = projectData.animationData[phaseIndex];
     if (subStepIndex >= currentPhase.subSteps.length - 1) {
-      const isLastPhase = phaseIndex >= animationData.length - 1;
+      const isLastPhase = phaseIndex >= projectData.animationData.length - 1;
       if (isLastPhase) {
         setPhaseIndex(0);
         setSubStepIndex(0);
@@ -90,7 +90,7 @@ export default function PreviewPage() {
     setIsPlaying((prev) => !prev);
   };
 
-  if (!animationData) {
+  if (!projectData) {
     return <div className="w-screen h-screen flex items-center justify-center bg-gray-100">Loading Preview Data...</div>;
   }
 
@@ -98,7 +98,8 @@ export default function PreviewPage() {
     <main className="flex w-screen h-screen overflow-hidden">
       <div className="flex-1 relative min-w-0">
         <ThreeScene
-          animationData={animationData}
+          animationData={projectData.animationData}
+          environment={projectData.environment}
           phaseIndex={phaseIndex}
           subStepIndex={subStepIndex}
         />
@@ -112,7 +113,7 @@ export default function PreviewPage() {
       
       {isPanelVisible ? (
         <InstructionPanel
-          animationData={animationData}
+          animationData={projectData.animationData}
           currentPhaseIndex={phaseIndex}
           currentSubStepIndex={subStepIndex}
           isPlaying={isPlaying}

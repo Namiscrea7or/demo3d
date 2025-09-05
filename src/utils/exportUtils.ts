@@ -1,7 +1,7 @@
 import pako from 'pako';
-import type { Phase } from '@/types';
+import type { Phase, EnvironmentState } from '@/types';
 
-export const prepareDataForPreview = (phases: Phase[]) => {
+export const prepareDataForPreview = (phases: Phase[], environment: EnvironmentState) => {
   const serializablePhases = phases.map(phase => ({
     ...phase,
     subSteps: phase.subSteps.map(subStep => {
@@ -32,16 +32,16 @@ export const prepareDataForPreview = (phases: Phase[]) => {
     }),
   }));
 
-  return { animationData: serializablePhases };
+  return { environment, animationData: serializablePhases };
 };
 
-export const exportAndCompressAnimation = (phases: Phase[]) => {
+export const exportAndCompressAnimation = (phases: Phase[], environment: EnvironmentState) => {
   if (phases.length === 0) {
     alert("Không có dữ liệu để export.");
     return;
   }
   
-  const dataToExport = prepareDataForPreview(phases);
+  const dataToExport = prepareDataForPreview(phases, environment);
 
   try {
     const jsonString = JSON.stringify(dataToExport);
@@ -58,6 +58,6 @@ export const exportAndCompressAnimation = (phases: Phase[]) => {
     URL.revokeObjectURL(url);
   } catch (error) {
     console.error("Lỗi khi export và nén file:", error);
-    alert("checkconsole.");
+    alert("Đã có lỗi xảy ra khi export file. Vui lòng kiểm tra console.");
   }
 };
