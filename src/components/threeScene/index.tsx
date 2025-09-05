@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo, Suspense } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Bounds, Grid, TransformControls } from "@react-three/drei";
 import { EffectComposer, Outline } from "@react-three/postprocessing";
@@ -68,8 +68,9 @@ type ThreeSceneProps = {
   onControlsReady?: (controls: OrbitControlsImpl) => void;
   isAnimating: boolean;
   version: number;
-  animationSubSteps: SubStep[];
   animationSpring: any;
+  animationSubSteps: SubStep[];
+  environmentProps: any;
 };
 
 function Invalidator({ version }: { version: number }) {
@@ -119,7 +120,8 @@ export default function ThreeScene({
   isAnimating,
   version,
   animationSpring,
-  animationSubSteps
+  animationSubSteps,
+  environmentProps,
 }: ThreeSceneProps) {
   const orbitControlsRef = useRef<OrbitControlsImpl>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -137,16 +139,18 @@ export default function ThreeScene({
 
   return (
     <Canvas
-      gl={{ preserveDrawingBuffer: true }}
+      gl={{ 
+        preserveDrawingBuffer: true,
+      }}
       shadows
       camera={{ position: [4, 3, 6], fov: 45 }}
+      style={{ background: '#435167' }}
       onPointerMissed={() => {
         if (!isDragging && !isAnimating) {
           onSelectObject(null);
         }
       }}
     >
-      <color attach="background" args={['#435167']} />
       <Invalidator version={version} />
       <SceneConnector 
         onRendererReady={onRendererReady} 
@@ -155,10 +159,20 @@ export default function ThreeScene({
         onControlsReady={onControlsReady}
         controlsRef={orbitControlsRef}
       />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 10, 5]} intensity={1.5} castShadow />
+      
+      <ambientLight 
+        color={environmentProps.ambientLight.color} 
+        intensity={environmentProps.ambientLight.intensity} 
+      />
+      <directionalLight 
+        color={environmentProps.directionalLight.color} 
+        intensity={environmentProps.directionalLight.intensity} 
+        position={environmentProps.directionalLight.position as [number, number, number]}
+        castShadow 
+      />
+      
       <Grid args={[100, 100]} cellSize={1} cellThickness={1.5} sectionSize={10} sectionThickness={1} cellColor="#888888" sectionColor="#888888" fadeDistance={80} fadeStrength={1} infiniteGrid />
-      <axesHelper args={[10]} />
+      
       <Bounds fit clip observe margin={1.2}>
         <Model
             scene={scene}
@@ -166,6 +180,7 @@ export default function ThreeScene({
             onSelectObject={onSelectObject}
         />
       </Bounds>
+      
       {!isAnimating && selectedObjectNode && transformMode !== 'select' && (
         <TransformControls
           object={selectedObjectNode}

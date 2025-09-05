@@ -65,6 +65,13 @@ export default function Layout3D() {
   const [version, setVersion] = useState(0);
   const [renderer, setRenderer] = useState<THREE.WebGLRenderer | undefined>(undefined);
 
+  const [ambientLight, setAmbientLight] = useState({ color: '#ffffff', intensity: 0.3 });
+  const [directionalLight, setDirectionalLight] = useState({
+    color: '#ffffff',
+    intensity: 1.5,
+    position: [5, 5, 5],
+  });
+
   const originalMaterials = useRef(new Map<string, Material | Material[]>());
 
   const thumbnailTarget = useMemo(() => {
@@ -235,8 +242,8 @@ export default function Layout3D() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.location.href = '/preview';
     } catch (error) {
-      console.error("error data preview:", error);
-      alert("anim data too large");
+      console.error("Lỗi khi chuẩn bị dữ liệu preview:", error);
+      alert("Dữ liệu animation quá lớn để xem trước. Vui lòng giảm bớt số step hoặc thumbnail.");
     }
   }, [phases, mainCamera, mainControls]);
 
@@ -255,15 +262,32 @@ export default function Layout3D() {
   const currentPhaseColors = currentPhase?.colorOverrides || {};
   const selectedObjectColorHex = selectedObject ? currentPhaseColors[selectedObject] : null;
   const overrideColor = selectedObjectColorHex ? new THREE.Color(selectedObjectColorHex) : null;
+  
+  const environmentProps = {
+    ambientLight, setAmbientLight,
+    directionalLight, setDirectionalLight,
+  };
 
   return (
     <div className="flex h-screen bg-gray-900 text-white">
-      <Sidebar scene={activeScene} visibility={currentVisibility} toggleVisibility={toggleVisibility} resetVisibility={resetVisibility} selectedObject={selectedObject} onSelectObject={setSelectedObject} selectedObjectNode={selectedObjectNode} onUpdateTransform={handleUpdateTransformFromSidebar} overrideColor={overrideColor} onUpdateColor={handleUpdateColor} />
+      <Sidebar 
+        scene={activeScene} 
+        visibility={currentVisibility} 
+        toggleVisibility={toggleVisibility} 
+        resetVisibility={resetVisibility} 
+        selectedObject={selectedObject} 
+        onSelectObject={setSelectedObject} 
+        selectedObjectNode={selectedObjectNode} 
+        onUpdateTransform={handleUpdateTransformFromSidebar} 
+        overrideColor={overrideColor} 
+        onUpdateColor={handleUpdateColor}
+        environmentProps={environmentProps}
+      />
       
       <div className="flex-1 flex flex-col min-h-0">
         <TopBar onExport={handleExport} onPreview={handlePreview} />
 
-        <div className="flex-1 relative min-h-0">
+        <div className="flex-1 relative min-h-0 bg-black">
           <ThreeScene 
             scene={activeScene} 
             visibility={currentVisibility} 
@@ -281,6 +305,7 @@ export default function Layout3D() {
             onSceneReady={setMainThreeScene}
             onCameraReady={setMainCamera}
             onControlsReady={setMainControls}
+            environmentProps={environmentProps}
           />
           <ViewportToolbar transformMode={transformMode} onSetTransformMode={setTransformMode} onHideSelected={handleHideSelected} onUndo={handleUndo} onRedo={handleRedo} canUndo={canUndo} canRedo={canRedo} />
         </div>
